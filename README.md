@@ -1,4 +1,4 @@
-# AI-Powered Expense Tracker
+# AI-Powered Income and Expense Tracker
 
 ## Project Overview
 The AI-Powered Expense Tracker is a comprehensive application designed to help users manage their financial transactions efficiently. It leverages AI technology to extract transaction data from various financial documents, apply custom business rules, and generate insightful reports. The application consists of a FastAPI backend integrated with a Supabase database and a React frontend utilizing Shadcn UI for a modern user experience.
