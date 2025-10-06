@@ -84,46 +84,58 @@ ai-powered-expense-tracker
 └── README.md
 ```
 
-## Getting Started
-To get started with the AI-Powered Expense Tracker, follow the instructions below:
+## Deployment
 
-### Prerequisites
-- Python 3.11+
-- Node.js (for frontend)
-- Supabase account for database setup
+### Render Deployment
+This application is configured for easy deployment on Render using the included `render.yaml` file.
 
-### Installation
-1. Clone the repository:
+#### Prerequisites
+- A Render account
+- A Supabase project with all required tables and configurations
+
+#### Deployment Steps
+1. **Connect to GitHub**: Link your Render account to the GitHub repository containing this code.
+
+2. **Create New Blueprint**: In Render dashboard, click "New +" and select "Blueprint".
+
+3. **Connect Repository**: Select your GitHub repository (`agenticfyai1-ai/AI-Expense-Tracker`).
+
+4. **Configure Services**: Render will automatically detect the `render.yaml` file and create:
+   - Backend API service (Python/FastAPI)
+   - Frontend service (Static React app)
+
+5. **Set Environment Variables**: Configure the following environment variables in Render:
    ```
-   git clone <repository-url>
-   cd ai-powered-expense-tracker
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_KEY=your_supabase_anon_key
+   SUPABASE_SERVICE_KEY=your_supabase_service_key
+   SUPABASE_JWT_SECRET=your_supabase_jwt_secret
+   SECRET_KEY=generate_a_random_secret_key
+   ENVIRONMENT=production
+   DEBUG=false
    ```
 
-2. Set up the backend:
-   - Navigate to the `backend` directory.
-   - Install dependencies:
-     ```
-     pip install -r requirements.txt
-     ```
-   - Configure your Supabase credentials in the `.env` file.
+6. **Deploy**: Click "Create Blueprint" and Render will build and deploy both services.
 
-3. Set up the frontend:
-   - Navigate to the `frontend` directory.
-   - Install dependencies:
-     ```
-     npm install
-     ```
+#### Post-Deployment
+- The frontend will automatically connect to the backend API
+- Access your application at the provided Render URLs
+- Monitor logs and performance through the Render dashboard
 
-### Running the Application
-- Start the backend server:
-  ```
-  uvicorn app.main:app --reload
-  ```
+### Environment Variables
+Make sure to set these environment variables in your deployment platform:
 
-- Start the frontend development server:
-  ```
-  npm start
-  ```
+**Backend:**
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_KEY`: Supabase anon/public key
+- `SUPABASE_SERVICE_KEY`: Supabase service role key (for admin operations)
+- `SUPABASE_JWT_SECRET`: Supabase JWT secret
+- `SECRET_KEY`: Random secret key for JWT tokens
+- `ENVIRONMENT`: Set to "production"
+- `DEBUG`: Set to "false"
+
+**Frontend:**
+- `VITE_API_BASE_URL`: Will be automatically set by Render to point to the backend service
 
 ## Contributing
 Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.

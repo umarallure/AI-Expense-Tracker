@@ -1,0 +1,43 @@
+services:
+  # Backend API service
+  - type: web
+    name: ai-expense-tracker-api
+    runtime: python3
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+
+  # Frontend service
+  - type: web
+    name: ai-expense-tracker-frontend
+    runtime: static
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: ai-expense-tracker-api
+          property: host
+
+# Database (if needed)
+# databases:
+#   - name: ai-expense-tracker-db
+#     databaseName: expense_tracker
+#     user: expense_user
