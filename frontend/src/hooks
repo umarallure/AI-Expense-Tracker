@@ -1,0 +1,115 @@
+// useTransactions.ts
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+
+export const useTransactions = () => {
+    const [transactions, setTransactions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchTransactions = async () => {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*');
+
+            if (error) {
+                setError(error);
+            } else {
+                setTransactions(data);
+            }
+            setLoading(false);
+        };
+
+        fetchTransactions();
+    }, []);
+
+    return { transactions, loading, error };
+};
+
+// useDocuments.ts
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+
+export const useDocuments = () => {
+    const [documents, setDocuments] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchDocuments = async () => {
+            const { data, error } = await supabase
+                .from('documents')
+                .select('*');
+
+            if (error) {
+                setError(error);
+            } else {
+                setDocuments(data);
+            }
+            setLoading(false);
+        };
+
+        fetchDocuments();
+    }, []);
+
+    return { documents, loading, error };
+};
+
+// useRules.ts
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+
+export const useRules = () => {
+    const [rules, setRules] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchRules = async () => {
+            const { data, error } = await supabase
+                .from('rules')
+                .select('*');
+
+            if (error) {
+                setError(error);
+            } else {
+                setRules(data);
+            }
+            setLoading(false);
+        };
+
+        fetchRules();
+    }, []);
+
+    return { rules, loading, error };
+};
+
+// useReports.ts
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+
+export const useReports = () => {
+    const [reports, setReports] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchReports = async () => {
+            const { data, error } = await supabase
+                .from('reports')
+                .select('*');
+
+            if (error) {
+                setError(error);
+            } else {
+                setReports(data);
+            }
+            setLoading(false);
+        };
+
+        fetchReports();
+    }, []);
+
+    return { reports, loading, error };
+};
