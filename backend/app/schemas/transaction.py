@@ -26,6 +26,10 @@ class TransactionBase(BaseModel):
     approved_by: Optional[UUID] = None
     approved_at: Optional[datetime] = None
     approval_notes: Optional[str] = None
+    vendor: Optional[str] = None
+    taxes_fees: Optional[float] = None
+    payment_method: Optional[str] = None
+    recipient_id: Optional[str] = None
 
 class TransactionCreate(TransactionBase):
     status: ExpenseStatus = ExpenseStatus.pending  # Default to pending for approval workflow
@@ -63,3 +67,7 @@ class TransactionApprovalUpdate(BaseModel):
     notes: Optional[str] = None
     status: ExpenseStatus
     approval_notes: Optional[str] = None
+    vendor: Optional[str] = None
+    taxes_fees: Optional[float] = None
+    payment_method: Optional[str] = None
+    recipient_id: Optional[str] = None

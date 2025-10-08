@@ -1,5 +1,5 @@
 import api from '../lib/api';
-import { Business, BusinessCreate, Account, AccountCreate, Category, CategoryCreate, Expense, CreateExpenseRequest, ExpenseApprovalRequest, ExpenseApprovalEditRequest, Rule, RuleCreate, RuleUpdate } from '../types/index';
+import { Business, BusinessCreate, Account, AccountCreate, Category, CategoryCreate, Expense, CreateExpenseRequest, ExpenseApprovalRequest, ExpenseApprovalEditRequest, Rule, RuleCreate, RuleUpdate, Document, DocumentUploadRequest, DocumentUpdateRequest, DocumentProcessingStatus } from '../types/index';
 
 export const businessService = {
   async getBusinesses(): Promise<{ businesses: Business[]; total: number }> {
@@ -170,5 +170,67 @@ export const ruleService = {
 
   async deleteRule(id: string): Promise<void> {
     await api.delete(`/rules/${id}`);
+  },
+};
+
+export const documentService = {
+  async uploadDocument(data: DocumentUploadRequest): Promise<Document> {
+    const formData = new FormData();
+    formData.append('file', data.file);
+    formData.append('business_id', data.business_id);
+    formData.append('document_type', data.document_type);
+    if (data.description) formData.append('description', data.description);
+    if (data.tags) formData.append('tags', data.tags);
+    if (data.transaction_id) formData.append('transaction_id', data.transaction_id);
+
+    const response = await api.post('/documents/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  async getDocuments(businessId: string, transactionId?: string, documentType?: string): Promise<{ documents: Document[]; total: number }> {
+    let url = `/documents/?business_id=${businessId}`;
+    if (transactionId) url += `&transaction_id=${transactionId}`;
+    if (documentType) url += `&document_type=${documentType}`;
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  async getDocument(id: string): Promise<Document> {
+    const response = await api.get(`/documents/${id}`);
+    return response.data;
+  },
+
+  async downloadDocument(id: string): Promise<{ download_url: string; expires_in: number; document_name: string }> {
+    const response = await api.get(`/documents/${id}/download`);
+    return response.data;
+  },
+
+  async updateDocument(id: string, data: DocumentUpdateRequest): Promise<Document> {
+    const response = await api.put(`/documents/${id}`, data);
+    return response.data;
+  },
+
+  async deleteDocument(id: string): Promise<void> {
+    await api.delete(`/documents/${id}`);
+  },
+
+  async processDocument(id: string): Promise<{ message: string; document_id: string; status: string }> {
+    const response = await api.post(`/document-processing/${id}/process`);
+    return response.data;
+  },
+
+  async getProcessingStatus(id: string): Promise<DocumentProcessingStatus> {
+    const response = await api.get(`/document-processing/${id}/status`);
+    return response.data;
+  },
+
+  async getSupportedTypes(): Promise<{ supported_extensions: string[]; supported_mimetypes: string[]; extractors: any[] }> {
+    const response = await api.get('/document-processing/supported-types');
+    return response.data;
   },
 };

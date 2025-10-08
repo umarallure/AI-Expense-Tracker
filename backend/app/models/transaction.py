@@ -33,6 +33,10 @@ class Transaction(Base):
     approved_by = Column(UUID(as_uuid=True), ForeignKey("auth.users.id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     approval_notes = Column(Text, nullable=True)
+    vendor = Column(String, nullable=True)
+    taxes_fees = Column(Float, nullable=True)
+    payment_method = Column(String, nullable=True)
+    recipient_id = Column(String, nullable=True)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
 

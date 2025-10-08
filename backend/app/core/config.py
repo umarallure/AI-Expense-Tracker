@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     DEFAULT_LLM_MODEL: str = "cohere/command-r-plus"
     DEFAULT_EMBEDDING_MODEL: str = "cohere/embed-english-v3.0"
     
+    # OpenAI Configuration (Phase 3.3)
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o-mini"  # Cost-effective for production
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    
     # AI Processing Settings
     MAX_TOKENS: int = 4096
     TEMPERATURE: float = 0.3

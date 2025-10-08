@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS transactions (
     receipt_url VARCHAR,
     status VARCHAR NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending', 'approved', 'rejected')),
     notes TEXT,
+    vendor VARCHAR,
+    taxes_fees NUMERIC(15, 2),
+    payment_method VARCHAR,
+    recipient_id VARCHAR,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -40,3 +44,7 @@ COMMENT ON COLUMN transactions.date IS 'Date when the transaction occurred';
 COMMENT ON COLUMN transactions.receipt_url IS 'URL to receipt image/document';
 COMMENT ON COLUMN transactions.status IS 'Transaction status: draft, pending, approved, rejected';
 COMMENT ON COLUMN transactions.notes IS 'Additional notes about the transaction';
+COMMENT ON COLUMN transactions.vendor IS 'Vendor or merchant name for the transaction';
+COMMENT ON COLUMN transactions.taxes_fees IS 'Taxes and fees associated with the transaction';
+COMMENT ON COLUMN transactions.payment_method IS 'Payment method used (cash, credit card, bank transfer, etc.)';
+COMMENT ON COLUMN transactions.recipient_id IS 'ID of the recipient for the transaction';

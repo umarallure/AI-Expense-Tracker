@@ -183,6 +183,10 @@ export interface Expense {
   approved_by?: string;
   approved_at?: string;
   approval_notes?: string;
+  vendor?: string;
+  taxes_fees?: number;
+  payment_method?: string;
+  recipient_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -199,6 +203,10 @@ export interface CreateExpenseRequest {
   receipt_url?: string;
   status?: ExpenseStatus;
   notes?: string;
+  vendor?: string;
+  taxes_fees?: number;
+  payment_method?: string;
+  recipient_id?: string;
 }
 
 export interface ExpenseApprovalRequest {
@@ -264,4 +272,74 @@ export interface RuleUpdate {
   actions?: RuleAction[];
   priority?: number;
   is_active?: boolean;
+}
+
+// Document Types
+export type ExtractionStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface Document {
+  id: string;
+  business_id: string;
+  transaction_id?: string;
+  user_id: string;
+  document_name: string;
+  document_type: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
+  storage_bucket: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, any>;
+  is_processed: boolean;
+  processed_at?: string;
+  created_at: string;
+  updated_at: string;
+  // Phase 3.2: Document Processing fields
+  extraction_status?: ExtractionStatus;
+  raw_text?: string;
+  structured_data?: Record<string, any>;
+  confidence_score?: number;
+  processing_error?: string;
+}
+
+export interface DocumentProcessingStatus {
+  document_id: string;
+  document_name: string;
+  extraction_status: ExtractionStatus;
+  document_type?: string;
+  confidence_score?: number;
+  processing_error?: string;
+  processed_at?: string;
+  created_at: string;
+  raw_text_preview?: string;
+  raw_text_length?: number;
+  word_count?: number;
+  structured_data?: Record<string, any>;
+}
+
+export interface DocumentUploadRequest {
+  file: File;
+  business_id: string;
+  document_type: string;
+  description?: string;
+  tags?: string;
+  transaction_id?: string;
+}
+
+export interface DocumentUpdateRequest {
+  document_name?: string;
+  document_type?: string;
+  description?: string;
+  tags?: string[];
+  transaction_id?: string;
+}
+
+// File attachment for transaction creation
+export interface FileAttachment {
+  file: File;
+  document_type: string;
+  description?: string;
+  tags?: string;
+  preview?: string; // For image previews
 }

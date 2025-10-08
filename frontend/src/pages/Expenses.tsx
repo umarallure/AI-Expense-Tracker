@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Download, Upload, Edit2, Trash2, FileText } from 'lucide-react';
+import { Plus, Search, Filter, Download, Edit2, Trash2, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
-import { businessService, categoryService, accountService, expenseService } from '../services/business.service';
-import type { Business, Expense, ExpenseStatus, Category, Account, CreateExpenseRequest } from '../types';
+import FileUpload from '../components/ui/FileUpload';
+import { businessService, categoryService, accountService, expenseService, documentService } from '../services/business.service';
+import type { Business, Expense, ExpenseStatus, Category, Account, CreateExpenseRequest, FileAttachment } from '../types';
 
 const Expenses: React.FC = () => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -19,6 +20,8 @@ const Expenses: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ExpenseStatus | 'all'>('all');
+  const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
     date: '',
     amount: '',
@@ -28,6 +31,10 @@ const Expenses: React.FC = () => {
     status: 'pending',
     is_income: false,
     notes: '',
+    vendor: '',
+    taxes_fees: '',
+    payment_method: '',
+    recipient_id: '',
   });
 
   useEffect(() => {
@@ -82,6 +89,8 @@ const Expenses: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsUploading(true);
+    
     try {
       const expenseData: CreateExpenseRequest = {
         business_id: selectedBusinessId,
@@ -94,15 +103,43 @@ const Expenses: React.FC = () => {
         is_income: formData.is_income,
         status: formData.status as ExpenseStatus,
         notes: formData.notes || undefined,
+        vendor: formData.vendor || undefined,
+        taxes_fees: formData.taxes_fees ? parseFloat(formData.taxes_fees) : undefined,
+        payment_method: formData.payment_method || undefined,
+        recipient_id: formData.recipient_id || undefined,
       };
 
+      let transactionId: string;
+      
       if (editingExpense) {
-        await expenseService.updateExpense(editingExpense.id, expenseData);
-        alert('Expense updated successfully!');
+        const updatedExpense = await expenseService.updateExpense(editingExpense.id, expenseData);
+        transactionId = updatedExpense.id;
       } else {
-        await expenseService.createExpense(expenseData);
-        alert('Expense submitted for approval successfully!');
+        const createdExpense = await expenseService.createExpense(expenseData);
+        transactionId = createdExpense.id;
       }
+      
+      // Upload attached documents if any
+      if (attachedFiles.length > 0) {
+        const uploadPromises = attachedFiles.map(fileAttachment =>
+          documentService.uploadDocument({
+            file: fileAttachment.file,
+            business_id: selectedBusinessId,
+            transaction_id: transactionId,
+            document_type: fileAttachment.document_type,
+            description: fileAttachment.description,
+            tags: fileAttachment.tags
+          })
+        );
+        
+        await Promise.all(uploadPromises);
+      }
+      
+      alert(
+        editingExpense
+          ? `Expense updated successfully!${attachedFiles.length > 0 ? ` ${attachedFiles.length} document(s) attached.` : ''}`
+          : `Expense submitted for approval successfully!${attachedFiles.length > 0 ? ` ${attachedFiles.length} document(s) attached.` : ''}`
+      );
       
       // Reset form and close modal
       setFormData({
@@ -114,7 +151,12 @@ const Expenses: React.FC = () => {
         status: 'pending',
         is_income: false,
         notes: '',
+        vendor: '',
+        taxes_fees: '',
+        payment_method: '',
+        recipient_id: '',
       });
+      setAttachedFiles([]);
       setEditingExpense(null);
       setIsModalOpen(false);
       
@@ -123,7 +165,9 @@ const Expenses: React.FC = () => {
       
     } catch (error) {
       console.error('Failed to save expense:', error);
-      // TODO: Show error message to user
+      alert('Failed to save expense. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -148,6 +192,10 @@ const Expenses: React.FC = () => {
       status: expense.status,
       is_income: expense.is_income || false,
       notes: expense.notes || '',
+      vendor: expense.vendor || '',
+      taxes_fees: expense.taxes_fees?.toString() || '',
+      payment_method: expense.payment_method || '',
+      recipient_id: expense.recipient_id || '',
     });
     setIsModalOpen(true);
   };
@@ -189,6 +237,42 @@ const Expenses: React.FC = () => {
     const matchesStatus = statusFilter === 'all' || expense.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  // Component to display document count for a transaction
+  const DocumentCount: React.FC<{ transactionId: string }> = ({ transactionId }) => {
+    const [count, setCount] = useState<number>(0);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const fetchDocumentCount = async () => {
+        try {
+          const response = await documentService.getDocuments(selectedBusinessId, transactionId);
+          setCount(response.total);
+        } catch (error) {
+          console.error('Failed to fetch document count:', error);
+          setCount(0);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchDocumentCount();
+    }, [transactionId]);
+
+    if (loading) {
+      return <span className="text-gray-400 text-xs">...</span>;
+    }
+
+    if (count === 0) {
+      return <span className="text-gray-400 text-xs">-</span>;
+    }
+
+    return (
+      <div className="flex items-center space-x-1 text-primary-600">
+        <FileText className="w-4 h-4" />
+        <span className="text-sm font-medium">{count}</span>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -307,7 +391,16 @@ const Expenses: React.FC = () => {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Receipt
+                    Vendor
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Taxes & Fees
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Payment Method
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Documents
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -349,20 +442,17 @@ const Expenses: React.FC = () => {
                           {statusBadge.label}
                         </Badge>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {expense.vendor || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {expense.taxes_fees ? formatCurrency(expense.taxes_fees, expense.currency) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {expense.payment_method || '-'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {expense.receipt_url ? (
-                          <a
-                            href={expense.receipt_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary-600 hover:text-primary-700 flex items-center"
-                          >
-                            <FileText className="w-4 h-4 mr-1" />
-                            View
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                        <DocumentCount transactionId={expense.id} />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                         <div className="flex items-center justify-end space-x-2">
@@ -398,6 +488,7 @@ const Expenses: React.FC = () => {
         onClose={() => {
           setIsModalOpen(false);
           setEditingExpense(null);
+          setAttachedFiles([]);
           setFormData({
             date: '',
             amount: '',
@@ -407,6 +498,10 @@ const Expenses: React.FC = () => {
             status: 'pending',
             is_income: false,
             notes: '',
+            vendor: '',
+            taxes_fees: '',
+            payment_method: '',
+            recipient_id: '',
           });
         }}
         title={editingExpense ? "Edit Expense" : "Add New Expense"}
@@ -524,35 +619,71 @@ const Expenses: React.FC = () => {
             </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
-            <textarea
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Additional notes..."
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          <div className="grid grid-cols-2 gap-4">
+            <Input 
+              label="Vendor" 
+              placeholder="e.g., Amazon, Walmart"
+              value={formData.vendor}
+              onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
+            />
+            <Input 
+              label="Taxes & Fees" 
+              type="number" 
+              step="0.01" 
+              placeholder="0.00"
+              value={formData.taxes_fees}
+              onChange={(e) => setFormData({ ...formData, taxes_fees: e.target.value })}
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <Input 
+              label="Payment Method" 
+              placeholder="e.g., Credit Card, Cash, Bank Transfer"
+              value={formData.payment_method}
+              onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+            />
+            <Input 
+              label="Recipient ID" 
+              placeholder="e.g., Employee ID, Vendor ID"
+              value={formData.recipient_id}
+              onChange={(e) => setFormData({ ...formData, recipient_id: e.target.value })}
+            />
+          </div>
+
+          {/* Document Attachments */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Receipt</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-500 transition-colors cursor-pointer">
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-600">Click to upload or drag and drop</p>
-              <p className="text-xs text-gray-500 mt-1">PDF, PNG, JPG up to 10MB</p>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Attach Documents (Receipts, Invoices, etc.)
+            </label>
+            <FileUpload
+              files={attachedFiles}
+              onFilesChange={setAttachedFiles}
+              maxFiles={5}
+              maxSizeMB={10}
+            />
           </div>
 
           <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
+            <Button type="button" variant="ghost" onClick={() => {
+              setIsModalOpen(false);
+              setAttachedFiles([]);
+            }}>
               Cancel
             </Button>
-            <Button type="button" variant="outline">
-              Save as Draft
-            </Button>
-            <Button type="submit" variant="primary">
-              {editingExpense ? "Update Expense" : (formData.status === 'approved' ? "Add Transaction" : "Submit for Approval")}
+            <Button 
+              type="submit" 
+              variant="primary"
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Uploading...
+                </>
+              ) : (
+                editingExpense ? "Update Expense" : (formData.status === 'approved' ? "Add Transaction" : "Submit for Approval")
+              )}
             </Button>
           </div>
         </form>

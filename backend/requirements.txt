@@ -28,10 +28,12 @@ httpx==0.26.0
 # Document Processing
 PyPDF2==3.0.1
 pdfplumber==0.10.3
+pytesseract==0.3.13  # OCR for images (requires Tesseract binary installed separately)
 pandas==2.2.0
 openpyxl==3.1.2
 python-magic==0.4.27
 Pillow==10.2.0
+tiktoken==0.12.0  # Token counting for OpenAI
 
 # Utilities
 python-dateutil==2.8.2

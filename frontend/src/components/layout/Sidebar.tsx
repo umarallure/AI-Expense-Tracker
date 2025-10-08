@@ -9,6 +9,7 @@ import {
   Receipt,
   CheckSquare,
   FileText,
+  FolderOpen,
   Settings,
   LogOut
 } from 'lucide-react';
@@ -24,6 +25,7 @@ const Sidebar: React.FC = () => {
     { to: '/categories', icon: Tags, label: 'Categories' },
     { to: '/rules', icon: SettingsIcon, label: 'Rules' },
     { to: '/expenses', icon: Receipt, label: 'Transactions' },
+    { to: '/documents', icon: FolderOpen, label: 'Documents' },
     { to: '/approvals', icon: CheckSquare, label: 'Approvals' },
     { to: '/reports', icon: FileText, label: 'Reports' },
   ];

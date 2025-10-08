@@ -3,7 +3,15 @@ API v1 router configuration.
 Includes all endpoint routers for the application.
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, businesses, accounts, categories, transactions  # , documents, rules, reports
+from app.api.v1.endpoints import (
+    auth,
+    businesses,
+    accounts,
+    categories,
+    transactions,
+    documents,
+    document_processing
+)  # , rules, reports
 
 api_router = APIRouter()
 
@@ -15,8 +23,13 @@ api_router.include_router(businesses.router)
 api_router.include_router(accounts.router)
 api_router.include_router(categories.router)
 
-# Phase 2+: To be uncommented as implemented
+# Phase 2+: Transaction and Document Management
 api_router.include_router(transactions.router)
-# api_router.include_router(documents.router)
+api_router.include_router(documents.router)
+
+# Phase 3.2: Document Processing Pipeline
+api_router.include_router(document_processing.router)
+
+# Phase 3+: To be implemented
 # api_router.include_router(rules.router)
 # api_router.include_router(reports.router)
