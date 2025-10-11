@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+// Determine API base URL based on environment
+const getApiBaseUrl = () => {
+  // Check if we're in production (on Render)
+  if (window.location.hostname.includes('onrender.com')) {
+    return 'https://ai-expense-tracker-api.onrender.com/api/v1';
+  }
+  // Development fallback
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
