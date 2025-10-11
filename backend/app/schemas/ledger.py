@@ -3,7 +3,7 @@ Pydantic schemas for Ledger-related API requests and responses.
 Defines data validation and serialization for ledger operations.
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Annotated
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
@@ -14,9 +14,9 @@ class LedgerEntryBase(BaseModel):
     business_id: UUID
     account_id: UUID
     transaction_id: UUID
-    amount_before: Decimal = Field(..., decimal_places=2)
-    amount_after: Decimal = Field(..., decimal_places=2)
-    change_amount: Decimal = Field(..., decimal_places=2)
+    amount_before: Annotated[Decimal, Field(..., ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]
+    amount_after: Annotated[Decimal, Field(..., ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]
+    change_amount: Annotated[Decimal, Field(..., ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]
     transaction_type: str = Field(..., regex=r'^(income|expense)$')
     description: Optional[str] = None
     created_by: UUID

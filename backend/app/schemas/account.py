@@ -3,10 +3,11 @@ Pydantic schemas for Account-related API requests and responses.
 Defines data validation and serialization for account operations.
 """
 from pydantic import BaseModel, Field, validator
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Annotated
 from datetime import datetime
 from enum import Enum
 from decimal import Decimal
+import pydantic
 
 
 class AccountType(str, Enum):
@@ -40,11 +41,11 @@ class AccountBase(BaseModel):
     institution_name: Optional[str] = Field(None, max_length=255)
     account_number_masked: Optional[str] = Field(None, max_length=50)
     routing_number: Optional[str] = Field(None, max_length=50)
-    current_balance: Decimal = Field(default=Decimal('0.00'), decimal_places=2)
-    available_balance: Optional[Decimal] = Field(None, decimal_places=2)
-    credit_limit: Optional[Decimal] = Field(None, decimal_places=2)
-    interest_rate: Optional[Decimal] = Field(None, decimal_places=4)
-    minimum_payment: Optional[Decimal] = Field(None, decimal_places=2)
+    current_balance: Annotated[Decimal, Field(default=Decimal('0.00'), ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]
+    available_balance: Optional[Annotated[Decimal, Field(ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]] = Field(None)
+    credit_limit: Optional[Annotated[Decimal, Field(ge=Decimal('0.00'), le=Decimal('999999999.99'))]] = Field(None)
+    interest_rate: Optional[Annotated[Decimal, Field(ge=Decimal('0.00'), le=Decimal('100.00'))]] = Field(None)
+    minimum_payment: Optional[Annotated[Decimal, Field(ge=Decimal('0.00'), le=Decimal('999999999.99'))]] = Field(None)
     due_date: Optional[int] = Field(None, ge=1, le=31)  # Day of month
     is_primary: bool = Field(default=False)
     color: Optional[str] = Field(None, max_length=7)  # Hex color code
@@ -82,11 +83,11 @@ class AccountUpdate(BaseModel):
     institution_name: Optional[str] = Field(None, max_length=255)
     account_number_masked: Optional[str] = Field(None, max_length=50)
     routing_number: Optional[str] = Field(None, max_length=50)
-    current_balance: Optional[Decimal] = Field(None, decimal_places=2)
-    available_balance: Optional[Decimal] = Field(None, decimal_places=2)
-    credit_limit: Optional[Decimal] = Field(None, decimal_places=2)
-    interest_rate: Optional[Decimal] = Field(None, decimal_places=4)
-    minimum_payment: Optional[Decimal] = Field(None, decimal_places=2)
+    current_balance: Optional[Annotated[Decimal, Field(ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]] = Field(None)
+    available_balance: Optional[Annotated[Decimal, Field(ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]] = Field(None)
+    credit_limit: Optional[Annotated[Decimal, Field(ge=Decimal('0.00'), le=Decimal('999999999.99'))]] = Field(None)
+    interest_rate: Optional[Annotated[Decimal, Field(ge=Decimal('0.00'), le=Decimal('100.00'))]] = Field(None)
+    minimum_payment: Optional[Annotated[Decimal, Field(ge=Decimal('0.00'), le=Decimal('999999999.99'))]] = Field(None)
     due_date: Optional[int] = Field(None, ge=1, le=31)
     is_primary: Optional[bool] = None
     color: Optional[str] = Field(None, max_length=7)
@@ -147,8 +148,8 @@ class AccountSummary(BaseModel):
 
 class AccountBalanceUpdate(BaseModel):
     """Schema for updating account balance."""
-    current_balance: Decimal = Field(..., decimal_places=2)
-    available_balance: Optional[Decimal] = Field(None, decimal_places=2)
+    current_balance: Annotated[Decimal, Field(..., ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]
+    available_balance: Optional[Annotated[Decimal, Field(ge=Decimal('-999999999.99'), le=Decimal('999999999.99'))]] = Field(None)
 
 
 # ============================================================================
