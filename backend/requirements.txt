@@ -16,23 +16,23 @@ sqlalchemy==2.0.25
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.0
-pydantic==2.10.3
-pydantic-settings==2.6.1
+pydantic==2.5.3
+pydantic-settings==2.1.0
 email-validator==2.1.0
 
 # AI & LLM Integration
 openai==1.10.0  # For OpenRouter API compatibility
 cohere==4.47.0
-httpx==0.26.0
+httpx==0.25.2
 
 # Document Processing
 PyPDF2==3.0.1
 pdfplumber==0.10.3
 pytesseract==0.3.13  # OCR for images (requires Tesseract binary installed separately)
-pandas==1.5.3  # Use older version with pre-built wheels for faster deployment
-openpyxl==3.0.10
+pandas==2.0.3  # Use stable version with pre-built wheels
+openpyxl==3.1.2
 python-magic==0.4.27
-Pillow==10.4.0
+Pillow==10.2.0
 tiktoken==0.12.0  # Token counting for OpenAI
 
 # Utilities
