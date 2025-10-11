@@ -29,7 +29,7 @@ httpx==0.26.0
 PyPDF2==3.0.1
 pdfplumber==0.10.3
 pytesseract==0.3.13  # OCR for images (requires Tesseract binary installed separately)
-pandas==2.2.0
+pandas==1.5.3  # Use older version with pre-built wheels for faster deployment
 openpyxl==3.1.2
 python-magic==0.4.27
 Pillow==10.2.0
