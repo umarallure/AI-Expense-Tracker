@@ -32,7 +32,7 @@ pytesseract==0.3.13  # OCR for images (requires Tesseract binary installed separ
 pandas==1.5.3  # Use older version with pre-built wheels for faster deployment
 openpyxl==3.1.2
 python-magic==0.4.27
-Pillow==10.2.0
+Pillow==9.5.0
 tiktoken==0.12.0  # Token counting for OpenAI
 
 # Utilities
