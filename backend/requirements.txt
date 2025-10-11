@@ -30,7 +30,7 @@ PyPDF2==3.0.1
 pdfplumber==0.10.3
 pytesseract==0.3.13  # OCR for images (requires Tesseract binary installed separately)
 pandas==1.5.3  # Use older version with pre-built wheels for faster deployment
-openpyxl==3.1.2
+openpyxl==3.0.10
 python-magic==0.4.27
 Pillow==9.5.0
 tiktoken==0.12.0  # Token counting for OpenAI
