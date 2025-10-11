@@ -10,6 +10,7 @@ import './index.css';
 // Lazy load pages for better performance
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Businesses = React.lazy(() => import('./pages/Businesses'));
+const ProjectDivisions = React.lazy(() => import('./pages/ProjectDivisions'));
 const Accounts = React.lazy(() => import('./pages/Accounts'));
 const Categories = React.lazy(() => import('./pages/Categories'));
 const Rules = React.lazy(() => import('./pages/Rules'));
@@ -97,6 +98,7 @@ function App() {
               >
                 <Route index element={<Dashboard />} />
                 <Route path="businesses" element={<Businesses />} />
+                <Route path="divisions" element={<ProjectDivisions />} />
                 <Route path="accounts" element={<Accounts />} />
                 <Route path="categories" element={<Categories />} />
                 <Route path="rules" element={<Rules />} />

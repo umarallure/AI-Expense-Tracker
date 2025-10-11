@@ -56,6 +56,8 @@ class Business(Base):
     accounts = relationship("Account", back_populates="business")
     categories = relationship("Category", back_populates="business")
     transactions = relationship("Transaction", back_populates="business")
+    project_divisions = relationship("ProjectDivision", back_populates="business")
+    documents = relationship("Document", back_populates="business")
 
     def __repr__(self):
         return f"<Business(id='{self.id}', name='{self.business_name}')>"

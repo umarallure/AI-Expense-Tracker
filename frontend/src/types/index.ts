@@ -343,3 +343,44 @@ export interface FileAttachment {
   tags?: string;
   preview?: string; // For image previews
 }
+
+// Project Division Types
+export interface ProjectDivision {
+  id: string;
+  business_id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectDivisionWithStats extends ProjectDivision {
+  transaction_count: number;
+  document_count: number;
+  total_amount: number;
+}
+
+export interface ProjectDivisionCreate {
+  business_id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  is_active?: boolean;
+}
+
+export interface ProjectDivisionUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+  is_active?: boolean;
+}
+
+export interface ProjectDivisionListResponse {
+  divisions: ProjectDivision[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}

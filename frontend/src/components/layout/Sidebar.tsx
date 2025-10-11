@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -11,19 +11,29 @@ import {
   FileText,
   FolderOpen,
   Settings,
-  LogOut
+  LogOut,
+  Grid3X3,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 const Sidebar: React.FC = () => {
   const { logout } = useAuth();
+  const [isBusinessExpanded, setIsBusinessExpanded] = useState(true);
 
-  const navItems = [
+  const mainNavItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/businesses', icon: Building2, label: 'Businesses' },
+  ];
+
+  const businessNavItems = [
+    { to: '/divisions', icon: Grid3X3, label: 'Project Divisions' },
     { to: '/accounts', icon: Wallet, label: 'Accounts' },
     { to: '/categories', icon: Tags, label: 'Categories' },
     { to: '/rules', icon: SettingsIcon, label: 'Rules' },
+  ];
+
+  const otherNavItems = [
     { to: '/expenses', icon: Receipt, label: 'Transactions' },
     { to: '/documents', icon: FolderOpen, label: 'Documents' },
     { to: '/approvals', icon: CheckSquare, label: 'Approvals' },
@@ -49,7 +59,63 @@ const Sidebar: React.FC = () => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => (
+        {/* Main Navigation Items */}
+        {mainNavItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                isActive
+                  ? 'bg-primary-50 text-primary-600'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`
+            }
+          >
+            <item.icon className="w-5 h-5" />
+            <span className="font-medium">{item.label}</span>
+          </NavLink>
+        ))}
+
+        {/* Business Section */}
+        <div className="space-y-1">
+          <button
+            onClick={() => setIsBusinessExpanded(!isBusinessExpanded)}
+            className="flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors text-gray-700 hover:bg-gray-50 w-full text-left"
+          >
+            {isBusinessExpanded ? (
+              <ChevronDown className="w-5 h-5" />
+            ) : (
+              <ChevronRight className="w-5 h-5" />
+            )}
+            <Building2 className="w-5 h-5" />
+            <span className="font-medium">Business Setting</span>
+          </button>
+
+          {isBusinessExpanded && (
+            <div className="ml-6 space-y-1">
+              {businessNavItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors text-sm ${
+                      isActive
+                        ? 'bg-primary-50 text-primary-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`
+                  }
+                >
+                  <item.icon className="w-4 h-4" />
+                  <span className="font-medium">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Other Navigation Items */}
+        {otherNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

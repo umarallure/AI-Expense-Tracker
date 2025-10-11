@@ -10,7 +10,8 @@ from app.api.v1.endpoints import (
     categories,
     transactions,
     documents,
-    document_processing
+    document_processing,
+    project_divisions
 )  # , rules, reports
 
 api_router = APIRouter()
@@ -22,6 +23,9 @@ api_router.include_router(businesses.router)
 # Phase 2: Account and Category Management
 api_router.include_router(accounts.router)
 api_router.include_router(categories.router)
+
+# Project Divisions (Business Organization)
+api_router.include_router(project_divisions.router)
 
 # Phase 2+: Transaction and Document Management
 api_router.include_router(transactions.router)

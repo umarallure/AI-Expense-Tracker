@@ -22,6 +22,7 @@ class Transaction(Base):
     business_id = Column(UUID(as_uuid=True), ForeignKey("businesses.id"), nullable=False)
     account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True)
+    project_division_id = Column(UUID(as_uuid=True), ForeignKey("project_divisions.id"), nullable=True)
     user_id = Column(UUID(as_uuid=True), nullable=False)
     amount = Column(Float, nullable=False)
     currency = Column(String, nullable=False, default="USD")
@@ -44,3 +45,4 @@ class Transaction(Base):
     category = relationship("Category", back_populates="transactions")
     account = relationship("Account", back_populates="transactions")
     business = relationship("Business", back_populates="transactions")
+    project_division = relationship("ProjectDivision", back_populates="transactions")
