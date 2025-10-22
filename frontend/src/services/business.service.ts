@@ -1,5 +1,5 @@
 import api from '../lib/api';
-import { Business, BusinessCreate, Account, AccountCreate, Category, CategoryCreate, Expense, CreateExpenseRequest, ExpenseApprovalRequest, ExpenseApprovalEditRequest, Rule, RuleCreate, RuleUpdate, Document, DocumentUploadRequest, DocumentUpdateRequest, DocumentProcessingStatus } from '../types/index';
+import { Business, BusinessCreate, Account, AccountCreate, Category, CategoryCreate, Expense, CreateExpenseRequest, ExpenseApprovalRequest, ExpenseApprovalEditRequest, Rule, RuleCreate, RuleUpdate, Document, DocumentUploadRequest, DocumentUpdateRequest, DocumentProcessingStatus, CategorySuggestion } from '../types/index';
 
 export const businessService = {
   async getBusinesses(): Promise<{ businesses: Business[]; total: number }> {
@@ -103,8 +103,18 @@ export const categoryService = {
 };
 
 export const expenseService = {
-  async getExpenses(businessId: string): Promise<{ transactions: Expense[]; total: number }> {
-    const response = await api.get(`/transactions/?business_id=${businessId}`);
+  async getExpenses(
+    businessId: string,
+    options: {
+      skip?: number;
+      limit?: number;
+    } = {}
+  ): Promise<{ transactions: Expense[]; total: number }> {
+    const params = new URLSearchParams({ business_id: businessId });
+    if (options.skip !== undefined) params.append('skip', options.skip.toString());
+    if (options.limit !== undefined) params.append('limit', options.limit.toString());
+
+    const response = await api.get(`/transactions/?${params.toString()}`);
     return response.data;
   },
 
@@ -231,6 +241,76 @@ export const documentService = {
 
   async getSupportedTypes(): Promise<{ supported_extensions: string[]; supported_mimetypes: string[]; extractors: any[] }> {
     const response = await api.get('/document-processing/supported-types');
+    return response.data;
+  },
+};
+
+export const categorySuggestionService = {
+  async getBulkSuggestions(
+    businessId: string,
+    options: {
+      transactionIds?: string[];
+      includeUncategorizedOnly?: boolean;
+      maxSuggestions?: number;
+    } = {}
+  ): Promise<{
+    suggestions: CategorySuggestion[];
+    total_suggestions: number;
+    processing_time_seconds: number;
+  }> {
+    const params = new URLSearchParams({ business_id: businessId });
+
+    const response = await api.post('/category-suggestions/bulk', {
+      transaction_ids: options.transactionIds,
+      include_uncategorized_only: options.includeUncategorizedOnly ?? true,
+      max_suggestions: options.maxSuggestions ?? 50
+    }, { params });
+
+    return response.data;
+  },
+
+  async getSingleSuggestion(
+    businessId: string,
+    transactionData: {
+      description: string;
+      vendor?: string;
+      amount: number;
+      is_income?: boolean;
+    }
+  ): Promise<CategorySuggestion | null> {
+    const params = new URLSearchParams({ business_id: businessId });
+
+    const response = await api.post('/category-suggestions/single', {
+      description: transactionData.description,
+      vendor: transactionData.vendor,
+      amount: transactionData.amount,
+      is_income: transactionData.is_income ?? false
+    }, { params });
+
+    return response.data;
+  },
+
+  async applySuggestion(
+    transactionId: string,
+    categoryId: string,
+    businessId: string
+  ): Promise<{ message: string }> {
+    const params = new URLSearchParams({ business_id: businessId });
+
+    const response = await api.post(`/category-suggestions/apply/${transactionId}`, {
+      category_id: categoryId
+    }, { params });
+
+    return response.data;
+  },
+
+  async getSuggestionStats(businessId: string): Promise<{
+    total_transactions: number;
+    uncategorized_transactions: number;
+    categorized_transactions: number;
+    categorization_rate: number;
+  }> {
+    const response = await api.get(`/category-suggestions/stats/${businessId}`);
     return response.data;
   },
 };

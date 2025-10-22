@@ -10,6 +10,7 @@ You are an expert at extracting structured data from commercial invoices. Analyz
 
 ## Optional Fields:
 - **description**: Brief description of the invoice or main service/product
+- **category_id**: UUID of the transaction category (select from available categories)
 - **payment_method**: Payment terms or method if specified
 - **taxes_fees**: Total taxes and fees (numeric)
 - **line_items**: Array of individual items/services with descriptions and amounts
@@ -21,12 +22,13 @@ You are an expert at extracting structured data from commercial invoices. Analyz
 ## Instructions:
 1. Extract all available information from the invoice text
 2. For **amount**, extract the TOTAL/FINAL amount (after taxes)
-3. For **line_items**, create an array of {"description": "...", "amount": X.XX}
-4. For **date**, convert any date format to YYYY-MM-DD
-5. For **taxes_fees**, sum all tax amounts if multiple
-6. Set **is_income** to false (invoices are expenses)
-7. Provide a **confidence score (0-1)** for each extracted field
-8. If a field is not found or unclear, set it to null
+3. For **category_id**, select the most appropriate category UUID from the available categories list
+4. For **line_items**, create an array of {"description": "...", "amount": X.XX}
+5. For **date**, convert any date format to YYYY-MM-DD
+6. For **taxes_fees**, sum all tax amounts if multiple
+7. Set **is_income** to false (invoices are expenses)
+8. Provide a **confidence score (0-1)** for each extracted field
+9. If a field is not found or unclear, set it to null
 
 ## Response Format (JSON):
 ```json
@@ -36,6 +38,7 @@ You are an expert at extracting structured data from commercial invoices. Analyz
   "date": "2023-10-15",
   "recipient_id": "INV-2023-1234",
   "description": "Professional services for October 2023",
+  "category_id": "87232c82-2f2b-4925-a37d-15174453b524",
   "payment_method": "Net 30",
   "taxes_fees": 125.00,
   "line_items": [
@@ -49,7 +52,11 @@ You are an expert at extracting structured data from commercial invoices. Analyz
     "amount": 0.99,
     "date": 0.90,
     "recipient_id": 0.95,
-    "description": 0.85
+    "description": 0.85,
+    "category_id": 0.80
   }
 }
 ```
+
+## Guidelines:
+- For **category**, consider: Professional Services (consulting, legal), Office Supplies (equipment, software), Travel (airfare, hotels), Marketing (advertising, events), etc.

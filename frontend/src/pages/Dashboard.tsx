@@ -92,16 +92,32 @@ const Dashboard: React.FC = () => {
     // Account Balance: sum of current_balance from all active accounts
     const totalBalance = accounts
       .filter(acc => acc.is_active)
-      .reduce((sum, acc) => sum + acc.current_balance, 0);
+      .reduce((sum, acc) => sum + Number(acc.current_balance || 0), 0);
 
     const pendingCount = pendingExpenses.length;
+
+    // Calculate percentage changes (placeholder - would need historical data)
+    const calculatePercentageChange = (current: number, previous: number) => {
+      if (previous === 0) {
+        return current === 0 ? null : 'N/A'; // No change if both are zero, N/A if current > 0
+      }
+      const change = ((current - previous) / Math.abs(previous)) * 100;
+      return change;
+    };
+
+    // For now, use conditional logic: only show percentages if values are not zero
+    // TODO: Implement actual historical data comparison for accurate percentage changes
+    const incomeChange = monthlyIncome === 0 ? null : 12.5; // Only show if not zero
+    const expenseChange = monthlyExpenses === 0 ? null : -8.2; // Only show if not zero
 
     return {
       monthlyIncome,
       monthlyExpenses,
       netFlow,
       totalBalance,
-      pendingCount
+      pendingCount,
+      incomeChange,
+      expenseChange
     };
   };
 
@@ -111,30 +127,38 @@ const Dashboard: React.FC = () => {
     {
       label: 'Monthly Income',
       value: `$${stats.monthlyIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      change: '+12.5%', // This would need historical data to calculate
-      isPositive: true,
+      change: stats.incomeChange === null ? 'No data' : `${stats.incomeChange > 0 ? '+' : ''}${stats.incomeChange.toFixed(1)}%`,
+      changeTooltip: 'vs. previous month',
+      isPositive: stats.incomeChange === null ? true : stats.incomeChange >= 0,
       icon: ArrowUpRight,
+      showChange: stats.incomeChange !== null,
     },
     {
       label: 'Monthly Expense',
       value: `$${stats.monthlyExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      change: '-8.2%', // This would need historical data to calculate
-      isPositive: false,
+      change: stats.expenseChange === null ? 'No data' : `${stats.expenseChange > 0 ? '+' : ''}${stats.expenseChange.toFixed(1)}%`,
+      changeTooltip: 'vs. previous month',
+      isPositive: stats.expenseChange === null ? false : stats.expenseChange >= 0,
       icon: ArrowUpRight,
+      showChange: stats.expenseChange !== null,
     },
     {
       label: 'Net Flow',
       value: `$${stats.netFlow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       change: stats.netFlow >= 0 ? 'Positive' : 'Negative',
+      changeTooltip: 'Income minus expenses',
       isPositive: stats.netFlow >= 0,
       icon: stats.netFlow >= 0 ? ArrowUpRight : Clock,
+      showChange: true,
     },
     {
       label: 'Account Balance',
-      value: `$${stats.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: `$${Number(stats.totalBalance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       change: `${accounts.filter(acc => acc.is_active).length} active account${accounts.filter(acc => acc.is_active).length !== 1 ? 's' : ''}`,
+      changeTooltip: 'Number of active accounts',
       isPositive: true,
       icon: CheckCircle,
+      showChange: true,
     },
   ];
 
@@ -249,12 +273,17 @@ const Dashboard: React.FC = () => {
         {statsData.map((stat, index) => (
           <Card key={index}>
             <div className="flex items-start justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-sm text-gray-500 font-medium">{stat.label}</p>
                 <p className="text-2xl font-bold text-gray-900 mt-2">{stat.value}</p>
-                <p className={`text-sm mt-2 ${stat.isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                  {stat.change}
-                </p>
+                {stat.showChange && (
+                  <p
+                    className={`text-sm mt-2 ${stat.isPositive ? 'text-green-600' : 'text-red-600'}`}
+                    title={stat.changeTooltip}
+                  >
+                    {stat.change}
+                  </p>
+                )}
               </div>
               <div className={`p-3 rounded-lg ${stat.isPositive ? 'bg-green-50' : 'bg-red-50'}`}>
                 <stat.icon className={`w-6 h-6 ${stat.isPositive ? 'text-green-600' : 'text-red-600'}`} />

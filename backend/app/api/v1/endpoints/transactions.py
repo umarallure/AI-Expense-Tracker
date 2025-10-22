@@ -155,7 +155,6 @@ async def get_transactions(
 async def get_transaction(
     transaction_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user),
-    business_access: Dict = Depends(check_business_permission("member")),
     supabase: Client = Depends(get_supabase_client)
 ):
     """

@@ -301,6 +301,7 @@ export interface Document {
   structured_data?: Record<string, any>;
   confidence_score?: number;
   processing_error?: string;
+  low_confidence_fields?: string[];
 }
 
 export interface DocumentProcessingStatus {
@@ -312,10 +313,13 @@ export interface DocumentProcessingStatus {
   processing_error?: string;
   processed_at?: string;
   created_at: string;
+  transaction_id?: string;
+  auto_created_transaction?: boolean;
   raw_text_preview?: string;
   raw_text_length?: number;
   word_count?: number;
   structured_data?: Record<string, any>;
+  low_confidence_fields?: string[];
 }
 
 export interface DocumentUploadRequest {
@@ -383,4 +387,21 @@ export interface ProjectDivisionListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+// Category Suggestion Types
+export interface CategorySuggestion {
+  transaction_id: string;
+  suggested_category_id: string;
+  suggested_category_name: string;
+  confidence_score: number;
+  reason: string;
+  suggestion_type: 'historical_pattern' | 'ai_analysis' | 'keyword_match';
+}
+
+export interface CategorySuggestionStats {
+  total_transactions: number;
+  uncategorized_transactions: number;
+  categorized_transactions: number;
+  categorization_rate: number;
 }

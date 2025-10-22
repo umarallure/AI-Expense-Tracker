@@ -156,7 +156,7 @@ class DataExtractor:
         """
         try:
             response = supabase_client.table("categories").select(
-                "id, name, description"
+                "id, category_name, description"
             ).eq("business_id", business_id).execute()
             
             categories = []
@@ -164,7 +164,7 @@ class DataExtractor:
                 for cat in response.data:
                     categories.append({
                         "id": cat["id"],
-                        "name": cat["name"],
+                        "name": cat["category_name"],
                         "description": cat.get("description", "")
                     })
             
@@ -208,25 +208,24 @@ class DataExtractor:
         # Build category list for AI
         if categories:
             category_list = "\n".join([
-                f"- {cat['name']}: {cat['description']}" if cat['description']
-                else f"- {cat['name']}"
+                f"- ID: {cat['id']}, Name: {cat['name']}, Description: {cat['description']}" if cat['description']
+                else f"- ID: {cat['id']}, Name: {cat['name']}"
                 for cat in categories
             ])
             category_instructions = f"""
-## Available Categories (match to one of these):
+## Available Categories (select ONE category_id):
 {category_list}
 
-**Category Matching Instructions:**
-- Analyze the transaction and select the MOST APPROPRIATE category from the list above
-- Use the category NAME exactly as shown
-- If no category fits well, use "Uncategorized" or leave blank
+**Category Selection Instructions:**
+- Analyze the transaction and select the MOST APPROPRIATE category_id from the list above
+- Return the category_id (UUID) that best matches the transaction
 - Consider the vendor, description, and transaction type when selecting
+- If no category fits well, you can leave category_id as null
 """
         else:
             category_instructions = """
 ## Category:
-- Provide a generic category suggestion (e.g., "Office Supplies", "Travel", "Meals")
-- This will be mapped to business categories later
+- No business categories available - leave category_id as null
 """
         
         # Truncate text if too long (max 8000 chars for extraction)
@@ -276,7 +275,7 @@ class DataExtractor:
         
         # Optional fields
         validated["description"] = self._clean_string(data.get("description"))
-        validated["category"] = self._clean_string(data.get("category"))
+        validated["category_id"] = self._clean_string(data.get("category_id"))
         validated["payment_method"] = self._clean_string(data.get("payment_method"))
         validated["taxes_fees"] = self._clean_amount(data.get("taxes_fees"))
         validated["recipient_id"] = self._clean_string(data.get("recipient_id"))

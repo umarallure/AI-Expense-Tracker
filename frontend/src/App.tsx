@@ -16,6 +16,7 @@ const Categories = React.lazy(() => import('./pages/Categories'));
 const Rules = React.lazy(() => import('./pages/Rules'));
 const Expenses = React.lazy(() => import('./pages/Expenses'));
 const Documents = React.lazy(() => import('./pages/Documents'));
+const DocumentDetail = React.lazy(() => import('./pages/DocumentDetail'));
 const Approvals = React.lazy(() => import('./pages/Approvals'));
 const Reports = React.lazy(() => import('./pages/Reports'));
 const Settings = React.lazy(() => import('./pages/Settings'));
@@ -104,6 +105,7 @@ function App() {
                 <Route path="rules" element={<Rules />} />
                 <Route path="expenses" element={<Expenses />} />
                 <Route path="documents" element={<Documents />} />
+                <Route path="documents/:id" element={<DocumentDetail />} />
                 <Route path="approvals" element={<Approvals />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="settings" element={<Settings />} />

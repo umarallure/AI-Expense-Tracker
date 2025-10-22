@@ -79,12 +79,8 @@ class TransactionCreator:
                 )
                 return None
             
-            # Get category_id if category name was extracted
-            category_id = await self._match_category(
-                business_id=business_id,
-                category_name=extracted_data.get("category"),
-                supabase_client=supabase_client
-            )
+            # Get category_id from AI extraction (no longer needs matching)
+            category_id = extracted_data.get("category_id")
             
             # Parse date string to datetime if needed
             if isinstance(date, str):
@@ -169,9 +165,9 @@ class TransactionCreator:
         
         try:
             # Try exact match first
-            response = supabase_client.table("categories").select("id, name").eq(
+            response = supabase_client.table("categories").select("id, category_name").eq(
                 "business_id", business_id
-            ).ilike("name", category_name).execute()
+            ).ilike("category_name", category_name).execute()
             
             if response.data and len(response.data) > 0:
                 category_id = response.data[0]["id"]
@@ -179,7 +175,7 @@ class TransactionCreator:
                 return category_id
             
             # Try partial match (case-insensitive contains)
-            response = supabase_client.table("categories").select("id, name").eq(
+            response = supabase_client.table("categories").select("id, category_name").eq(
                 "business_id", business_id
             ).execute()
             
@@ -187,12 +183,12 @@ class TransactionCreator:
                 # Manual fuzzy matching
                 category_name_lower = category_name.lower()
                 for cat in response.data:
-                    cat_name_lower = cat["name"].lower()
+                    cat_name_lower = cat["category_name"].lower()
                     if category_name_lower in cat_name_lower or cat_name_lower in category_name_lower:
                         category_id = cat["id"]
                         logger.debug(
                             f"Fuzzy matched category '{category_name}' to "
-                            f"'{cat['name']}' (ID: {category_id})"
+                            f"'{cat['category_name']}' (ID: {category_id})"
                         )
                         return category_id
             
@@ -237,7 +233,8 @@ class TransactionCreator:
         """
         notes_parts = [
             "🤖 Auto-created from document extraction",
-            f"Confidence: {confidence_score:.1%}"
+            f"Confidence: {confidence_score:.1%}",
+            "🎯 Category selected by AI"
         ]
         
         # Add field confidence info

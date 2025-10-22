@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     businesses,
     accounts,
     categories,
+    category_suggestions,
     transactions,
     documents,
     document_processing,
@@ -23,6 +24,7 @@ api_router.include_router(businesses.router)
 # Phase 2: Account and Category Management
 api_router.include_router(accounts.router)
 api_router.include_router(categories.router)
+api_router.include_router(category_suggestions.router)
 
 # Project Divisions (Business Organization)
 api_router.include_router(project_divisions.router)

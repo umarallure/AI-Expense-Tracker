@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Upload, Download, Edit2, Trash2, FileText, Play, Eye, CheckCircle, XCircle, Clock, Loader, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter, Upload, Download, Edit2, Trash2, FileText, Play, Eye, CheckCircle, XCircle, Clock, Loader, AlertCircle, Link, Tag } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
-import { businessService, documentService } from '../services/business.service';
-import type { Business, Document, DocumentProcessingStatus } from '../types';
+import DocumentLabelManager from '../components/DocumentLabelManager';
+import { businessService, documentService, expenseService } from '../services/business.service';
+import type { Business, Document, Expense } from '../types';
 
 const Documents: React.FC = () => {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>('');
@@ -17,11 +20,14 @@ const Documents: React.FC = () => {
   const [editingDocument, setEditingDocument] = useState<Document | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [linkFilter, setLinkFilter] = useState<string>('all');
+  const [labelFilter, setLabelFilter] = useState<string>('all');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [viewingDocument, setViewingDocument] = useState<DocumentProcessingStatus | null>(null);
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
+  const [selectedDocuments, setSelectedDocuments] = useState<Set<string>>(new Set());
+  const [isBulkLabelModalOpen, setIsBulkLabelModalOpen] = useState(false);
+  const [bulkLabels, setBulkLabels] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     document_type: 'receipt',
     description: '',
@@ -182,15 +188,61 @@ const Documents: React.FC = () => {
     }
   };
 
-  const handleViewExtracted = async (documentId: string) => {
+  const handleBulkLabel = async () => {
+    if (selectedDocuments.size === 0 || bulkLabels.length === 0) return;
+
     try {
-      const status = await documentService.getProcessingStatus(documentId);
-      setViewingDocument(status);
-      setIsViewModalOpen(true);
+      const updatePromises = Array.from(selectedDocuments).map(async (documentId) => {
+        const document = documents.find(d => d.id === documentId);
+        if (!document) return;
+
+        // Merge existing labels with new bulk labels
+        const existingLabels = document.tags || [];
+        const newLabels = Array.from(new Set([...existingLabels, ...bulkLabels]));
+
+        return documentService.updateDocument(documentId, {
+          tags: newLabels
+        });
+      });
+
+      await Promise.all(updatePromises);
+
+      // Reset selection and close modal
+      setSelectedDocuments(new Set());
+      setBulkLabels([]);
+      setIsBulkLabelModalOpen(false);
+
+      // Refresh documents
+      fetchDocuments(selectedBusinessId);
+      alert(`Successfully updated labels for ${selectedDocuments.size} documents!`);
+
     } catch (error) {
-      console.error('Failed to get processing status:', error);
-      alert('Failed to load extracted data. Please try again.');
+      console.error('Failed to bulk update labels:', error);
+      alert('Failed to update labels. Please try again.');
     }
+  };
+
+  const handleSelectDocument = (documentId: string, selected: boolean) => {
+    const newSelection = new Set(selectedDocuments);
+    if (selected) {
+      newSelection.add(documentId);
+    } else {
+      newSelection.delete(documentId);
+    }
+    setSelectedDocuments(newSelection);
+  };
+
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      const allIds = new Set(filteredDocuments.map(doc => doc.id));
+      setSelectedDocuments(allIds);
+    } else {
+      setSelectedDocuments(new Set());
+    }
+  };
+
+  const handleViewExtracted = async (documentId: string) => {
+    navigate(`/documents/${documentId}`);
   };
 
   const formatDate = (dateString: string) => {
@@ -220,22 +272,180 @@ const Documents: React.FC = () => {
     return types[type] || types.other;
   };
 
-  const getExtractionStatusInfo = (status?: string) => {
-    const statuses: Record<string, { icon: any; color: string; label: string; variant: any }> = {
-      pending: { icon: Clock, color: 'text-gray-500', label: 'Not Processed', variant: 'default' },
-      processing: { icon: Loader, color: 'text-blue-500 animate-spin', label: 'Processing...', variant: 'default' },
-      completed: { icon: CheckCircle, color: 'text-green-500', label: 'Processed', variant: 'success' },
-      failed: { icon: XCircle, color: 'text-red-500', label: 'Failed', variant: 'danger' },
+  const getExtractionStatusInfo = (status?: string, confidenceScore?: number, lowConfidenceFields?: string[]) => {
+    const statuses: Record<string, { icon: any; color: string; label: string; variant: any; helpText?: string }> = {
+      pending: {
+        icon: Clock,
+        color: 'text-gray-500',
+        label: 'Not Processed',
+        variant: 'default',
+        helpText: 'Document uploaded but not yet processed by AI'
+      },
+      processing: {
+        icon: Loader,
+        color: 'text-blue-500 animate-spin',
+        label: 'Processing...',
+        variant: 'default',
+        helpText: 'AI is currently analyzing the document'
+      },
+      completed: {
+        icon: CheckCircle,
+        color: 'text-green-500',
+        label: 'Verified',
+        variant: 'success',
+        helpText: 'Document processed successfully with high confidence'
+      },
+      needs_review: {
+        icon: AlertCircle,
+        color: 'text-amber-500',
+        label: 'Needs Review',
+        variant: 'warning',
+        helpText: 'Document processed but some fields need manual verification'
+      },
+      failed: {
+        icon: XCircle,
+        color: 'text-red-500',
+        label: 'Failed',
+        variant: 'danger',
+        helpText: 'Document processing failed. Please try reprocessing or contact support.'
+      },
     };
+
+    // Determine status based on confidence score for completed documents
+    if (status === 'completed' && confidenceScore !== undefined) {
+      if (confidenceScore >= 0.9) {
+        return statuses.completed;
+      } else if (confidenceScore >= 0.7) {
+        return statuses.needs_review;
+      } else {
+        return statuses.needs_review;
+      }
+    }
+
     return statuses[status || 'pending'] || statuses.pending;
+  };
+
+  const formatLowConfidenceFields = (fields?: string[]) => {
+    if (!fields || fields.length === 0) return null;
+
+    const fieldLabels: Record<string, string> = {
+      payment_method: 'Payment method',
+      due_date: 'Due date',
+      amount: 'Amount',
+      vendor: 'Vendor',
+      date: 'Date',
+      description: 'Description',
+      tax_amount: 'Tax amount',
+      total: 'Total',
+    };
+
+    const formattedFields = fields.map(field => fieldLabels[field] || field.replace(/_/g, ' ')).join(', ');
+    return `Please verify: ${formattedFields}`;
+  };
+
+  // Component to display transaction linking info for a document
+  const TransactionLinkInfo: React.FC<{
+    document: Document;
+    onNavigateToTransaction?: (transactionId: string) => void;
+    onLinkToTransaction?: (documentId: string) => void;
+  }> = ({
+    document,
+    onNavigateToTransaction,
+    onLinkToTransaction
+  }) => {
+    const [transactionInfo, setTransactionInfo] = useState<Expense | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+      if (document.transaction_id) {
+        fetchTransactionInfo(document.transaction_id);
+      }
+    }, [document.transaction_id]);
+
+    const fetchTransactionInfo = async (transactionId: string) => {
+      try {
+        setIsLoading(true);
+        const response = await expenseService.getExpense(transactionId);
+        setTransactionInfo(response);
+      } catch (error) {
+        console.error('Failed to fetch transaction info:', error);
+        // Keep transactionInfo as null to show error state
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (!document.transaction_id) {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2 text-xs text-gray-500">
+            <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+            <span>Not linked</span>
+          </div>
+          {onLinkToTransaction && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Link className="w-3 h-3" />}
+              onClick={() => onLinkToTransaction(document.id)}
+              className="text-xs h-6 px-2 text-blue-600 hover:bg-blue-50"
+            >
+              Link to Transaction
+            </Button>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center space-x-2 text-xs text-green-600">
+          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+          <span>Linked to transaction</span>
+        </div>
+        {isLoading ? (
+          <div className="text-xs text-gray-500">Loading transaction details...</div>
+        ) : transactionInfo ? (
+          <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+            <div className="font-medium truncate">{transactionInfo.description}</div>
+            <div className="text-gray-500">
+              ${transactionInfo.amount.toFixed(2)} • {new Date(transactionInfo.date).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-red-500">Failed to load transaction details</div>
+        )}
+        {onNavigateToTransaction && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Eye className="w-3 h-3" />}
+            onClick={() => onNavigateToTransaction(document.transaction_id!)}
+            className="text-xs h-6 px-2"
+          >
+            View Transaction
+          </Button>
+        )}
+      </div>
+    );
   };
 
   const filteredDocuments = documents.filter((doc) => {
     const matchesSearch =
       doc.document_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      doc.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesType = typeFilter === 'all' || doc.document_type === typeFilter;
-    return matchesSearch && matchesType;
+    const matchesLink = linkFilter === 'all' ||
+      (linkFilter === 'linked' && doc.transaction_id) ||
+      (linkFilter === 'unlinked' && !doc.transaction_id);
+    const matchesLabel = labelFilter === 'all' ||
+      (doc.tags && doc.tags.includes(labelFilter));
+    return matchesSearch && matchesType && matchesLink && matchesLabel;
   });
 
   if (isLoading) {
@@ -256,6 +466,19 @@ const Documents: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
           <p className="text-gray-500 mt-1">Manage receipts, invoices, and other business documents</p>
+          {documents.length > 0 && (
+            <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
+              <span>Total: {documents.length}</span>
+              <span className="flex items-center space-x-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span>Linked: {documents.filter(d => d.transaction_id).length}</span>
+              </span>
+              <span className="flex items-center space-x-1">
+                <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+                <span>Unlinked: {documents.filter(d => !d.transaction_id).length}</span>
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center space-x-4">
           <select
@@ -270,11 +493,53 @@ const Documents: React.FC = () => {
               </option>
             ))}
           </select>
+
+          {/* Bulk Actions */}
+          {selectedDocuments.size > 0 && (
+            <div className="flex items-center space-x-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-sm text-blue-700 font-medium">
+                {selectedDocuments.size} selected
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Tag className="w-4 h-4" />}
+                onClick={() => setIsBulkLabelModalOpen(true)}
+                className="text-blue-600 border-blue-300 hover:bg-blue-100"
+              >
+                Add Labels
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedDocuments(new Set())}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+
           <Button variant="primary" icon={<Upload className="w-5 h-5" />} onClick={() => setIsModalOpen(true)}>
             Upload Document
           </Button>
         </div>
       </div>
+
+      {/* Status Help */}
+      <Card className="bg-blue-50 border-blue-200">
+        <div className="flex items-start space-x-3">
+          <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-blue-900 mb-1">Document Processing Status</p>
+            <div className="text-blue-800 space-y-1">
+              <p><strong>Verified:</strong> Document processed successfully with high confidence</p>
+              <p><strong>Needs Review:</strong> Document processed but some fields may need manual verification</p>
+              <p><strong>Processing:</strong> AI is currently analyzing the document</p>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Filters */}
       <Card>
@@ -283,7 +548,7 @@ const Documents: React.FC = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search documents..."
+              placeholder="Search documents, descriptions, or labels..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -302,6 +567,31 @@ const Documents: React.FC = () => {
               <option value="statement">Statement</option>
               <option value="contract">Contract</option>
               <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Link className="w-5 h-5 text-gray-400" />
+            <select
+              value={linkFilter}
+              onChange={(e) => setLinkFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="all">All Documents</option>
+              <option value="linked">Linked to Transactions</option>
+              <option value="unlinked">Not Linked</option>
+            </select>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Tag className="w-5 h-5 text-gray-400" />
+            <select
+              value={labelFilter}
+              onChange={(e) => setLabelFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="all">All Labels</option>
+              {Array.from(new Set(documents.flatMap(doc => doc.tags || []))).sort().map((label) => (
+                <option key={label} value={label}>{label}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -327,16 +617,38 @@ const Documents: React.FC = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Select All Checkbox */}
+          {filteredDocuments.length > 0 && (
+            <div className="col-span-full mb-2 flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={selectedDocuments.size === filteredDocuments.length && filteredDocuments.length > 0}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+              <label className="text-sm text-gray-700">
+                Select All ({filteredDocuments.length} documents)
+              </label>
+            </div>
+          )}
+
           {filteredDocuments.map((document) => {
             const typeBadge = getDocumentTypeBadge(document.document_type);
-            const statusInfo = getExtractionStatusInfo(document.extraction_status);
+            const statusInfo = getExtractionStatusInfo(document.extraction_status, document.confidence_score, document.low_confidence_fields);
             const StatusIcon = statusInfo.icon;
             
             return (
               <Card key={document.id}>
                 <div className="p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3">
+                  {/* Selection Checkbox */}
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedDocuments.has(document.id)}
+                      onChange={(e) => handleSelectDocument(document.id, e.target.checked)}
+                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                    />
+                    <div className="flex items-center space-x-3 flex-1">
                       <div className="p-2 bg-primary-50 rounded-lg">
                         <FileText className="w-6 h-6 text-primary-600" />
                       </div>
@@ -351,29 +663,67 @@ const Documents: React.FC = () => {
                   </div>
 
                   {/* Processing Status */}
-                  <div className="flex items-center space-x-2">
-                    <StatusIcon className={`w-4 h-4 ${statusInfo.color}`} />
-                    <span className="text-xs text-gray-600">{statusInfo.label}</span>
-                    {document.extraction_status === 'completed' && document.confidence_score && (
-                      <span className="text-xs text-gray-500">
-                        ({Math.round(document.confidence_score * 100)}% confidence)
-                      </span>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <StatusIcon className={`w-4 h-4 ${statusInfo.color}`} />
+                      <span className="text-xs text-gray-600">{statusInfo.label}</span>
+                      <button
+                        className="text-gray-400 hover:text-gray-600 transition-colors"
+                        title={statusInfo.helpText}
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Low confidence fields warning */}
+                    {document.extraction_status === 'completed' &&
+                     document.confidence_score &&
+                     document.confidence_score < 0.9 &&
+                     document.low_confidence_fields &&
+                     document.low_confidence_fields.length > 0 && (
+                      <div className="flex items-start space-x-2 p-2 bg-amber-50 border border-amber-200 rounded">
+                        <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-700">
+                          {formatLowConfidenceFields(document.low_confidence_fields)}
+                        </p>
+                      </div>
                     )}
                   </div>
+
+                  {/* Transaction Linking Info */}
+                  <TransactionLinkInfo
+                    document={document}
+                    onNavigateToTransaction={(transactionId) => {
+                      // For now, just show an alert - in a real implementation, this would navigate to the Expenses page
+                      alert(`Navigate to transaction: ${transactionId}`);
+                    }}
+                    onLinkToTransaction={(documentId) => {
+                      // For now, just show an alert - in a real implementation, this would open a transaction selector
+                      alert(`Link document ${documentId} to transaction`);
+                    }}
+                  />
 
                   {document.description && (
                     <p className="text-sm text-gray-600 line-clamp-2">{document.description}</p>
                   )}
 
-                  {document.tags && document.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {document.tags.map((tag, index) => (
-                        <span key={index} className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {/* Labels */}
+                  <DocumentLabelManager
+                    currentLabels={document.tags || []}
+                    onLabelsChange={async (newLabels) => {
+                      try {
+                        await documentService.updateDocument(document.id, {
+                          tags: newLabels
+                        });
+                        // Refresh documents to show updated labels
+                        fetchDocuments(selectedBusinessId);
+                      } catch (error) {
+                        console.error('Failed to update document labels:', error);
+                        alert('Failed to update labels. Please try again.');
+                      }
+                    }}
+                    className="mt-2"
+                  />
 
                   {/* Processing Error */}
                   {document.extraction_status === 'failed' && document.processing_error && (
@@ -532,110 +882,48 @@ const Documents: React.FC = () => {
         </form>
       </Modal>
 
-      {/* View Extracted Text Modal */}
+      {/* Bulk Label Modal */}
       <Modal
-        isOpen={isViewModalOpen}
+        isOpen={isBulkLabelModalOpen}
         onClose={() => {
-          setIsViewModalOpen(false);
-          setViewingDocument(null);
+          setIsBulkLabelModalOpen(false);
+          setBulkLabels([]);
         }}
-        title="Extracted Document Data"
-        size="xl"
+        title={`Add Labels to ${selectedDocuments.size} Documents`}
+        size="md"
       >
-        {viewingDocument && (
-          <div className="space-y-6">
-            {/* Document Info */}
-            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Document Name</p>
-                <p className="text-sm font-medium text-gray-900">{viewingDocument.document_name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Status</p>
-                <Badge variant={getExtractionStatusInfo(viewingDocument.extraction_status).variant} size="sm">
-                  {getExtractionStatusInfo(viewingDocument.extraction_status).label}
-                </Badge>
-              </div>
-              {viewingDocument.confidence_score && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Confidence Score</p>
-                  <p className="text-sm font-medium text-gray-900">
-                    {Math.round(viewingDocument.confidence_score * 100)}%
-                  </p>
-                </div>
-              )}
-              {viewingDocument.word_count && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Word Count</p>
-                  <p className="text-sm font-medium text-gray-900">{viewingDocument.word_count}</p>
-                </div>
-              )}
-              {viewingDocument.processed_at && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Processed At</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(viewingDocument.processed_at)}</p>
-                </div>
-              )}
-            </div>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Add labels to all selected documents. Existing labels will be preserved.
+          </p>
 
-            {/* Extracted Text */}
-            {viewingDocument.raw_text_preview && (
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Extracted Text ({viewingDocument.raw_text_length} characters)
-                </h3>
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
-                  <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
-                    {viewingDocument.raw_text_preview}
-                    {viewingDocument.raw_text_length && viewingDocument.raw_text_length > 500 && (
-                      <span className="text-gray-500 italic">\n\n... (showing first 500 characters)</span>
-                    )}
-                  </pre>
-                </div>
-              </div>
-            )}
+          <DocumentLabelManager
+            currentLabels={bulkLabels}
+            onLabelsChange={setBulkLabels}
+            className="border border-gray-200 rounded-lg"
+          />
 
-            {/* Structured Data */}
-            {viewingDocument.structured_data && Object.keys(viewingDocument.structured_data).length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Structured Data</h3>
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 max-h-96 overflow-y-auto">
-                  <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
-                    {JSON.stringify(viewingDocument.structured_data, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
-
-            {/* Processing Error */}
-            {viewingDocument.processing_error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-red-900 mb-1">Processing Error</h3>
-                    <p className="text-sm text-red-700">{viewingDocument.processing_error}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Close Button */}
-            <div className="flex justify-end pt-4 border-t border-gray-200">
-              <Button 
-                variant="primary" 
-                onClick={() => {
-                  setIsViewModalOpen(false);
-                  setViewingDocument(null);
-                }}
-              >
-                Close
-              </Button>
-            </div>
+          <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setIsBulkLabelModalOpen(false);
+                setBulkLabels([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleBulkLabel}
+              disabled={bulkLabels.length === 0}
+            >
+              Add Labels to {selectedDocuments.size} Documents
+            </Button>
           </div>
-        )}
+        </div>
       </Modal>
+
     </div>
   );
 };
