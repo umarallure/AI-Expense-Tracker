@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CheckCircle, XCircle, Edit3, Eye, Clock, DollarSign, Calendar, FileText, User, AlertCircle, Building, ChevronRight } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -9,6 +10,7 @@ import { businessService, categoryService, accountService, expenseService } from
 import type { Business, Expense, Category, Account, ExpenseApprovalRequest, ExpenseApprovalEditRequest } from '../types';
 
 const Approvals: React.FC = () => {
+  const navigate = useNavigate();
   const [pendingExpenses, setPendingExpenses] = useState<Expense[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -351,6 +353,15 @@ const Approvals: React.FC = () => {
 
                         {/* Action Buttons */}
                         <div className="flex gap-4 justify-end pt-4">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/approvals/${expense.id}`);
+                            }}
+                            className="px-6 py-2 border border-blue-600 text-blue-700 rounded-lg text-base font-medium hover:bg-blue-50 transition-colors"
+                          >
+                            Review with Document
+                          </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

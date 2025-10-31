@@ -346,11 +346,9 @@ const Documents: React.FC = () => {
   // Component to display transaction linking info for a document
   const TransactionLinkInfo: React.FC<{
     document: Document;
-    onNavigateToTransaction?: (transactionId: string) => void;
     onLinkToTransaction?: (documentId: string) => void;
   }> = ({
     document,
-    onNavigateToTransaction,
     onLinkToTransaction
   }) => {
     const [transactionInfo, setTransactionInfo] = useState<Expense | null>(null);
@@ -399,10 +397,7 @@ const Documents: React.FC = () => {
 
     return (
       <div className="space-y-1">
-        <div className="flex items-center space-x-2 text-xs text-green-600">
-          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-          <span>Linked to transaction</span>
-        </div>
+        
         {isLoading ? (
           <div className="text-xs text-gray-500">Loading transaction details...</div>
         ) : transactionInfo ? (
@@ -418,17 +413,6 @@ const Documents: React.FC = () => {
           </div>
         ) : (
           <div className="text-xs text-red-500">Failed to load transaction details</div>
-        )}
-        {onNavigateToTransaction && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={<Eye className="w-3 h-3" />}
-            onClick={() => onNavigateToTransaction(document.transaction_id!)}
-            className="text-xs h-6 px-2"
-          >
-            View Transaction
-          </Button>
         )}
       </div>
     );
@@ -693,10 +677,6 @@ const Documents: React.FC = () => {
                   {/* Transaction Linking Info */}
                   <TransactionLinkInfo
                     document={document}
-                    onNavigateToTransaction={(transactionId) => {
-                      // For now, just show an alert - in a real implementation, this would navigate to the Expenses page
-                      alert(`Navigate to transaction: ${transactionId}`);
-                    }}
                     onLinkToTransaction={(documentId) => {
                       // For now, just show an alert - in a real implementation, this would open a transaction selector
                       alert(`Link document ${documentId} to transaction`);

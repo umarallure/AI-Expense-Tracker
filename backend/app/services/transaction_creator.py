@@ -2,7 +2,7 @@
 Transaction Creator Service
 Automatically creates transactions from AI-extracted document data.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from uuid import UUID
 from datetime import datetime
 from loguru import logger
@@ -101,7 +101,7 @@ class TransactionCreator:
                 "description": extracted_data.get("description") or f"Auto-created from {vendor}",
                 "date": date.isoformat(),
                 "is_income": extracted_data.get("is_income", False),
-                "status": self._determine_status(confidence_score),
+                "status": self._determine_status(confidence_score, extracted_data),
                 "notes": self._generate_notes(extracted_data, confidence_score),
                 "taxes_fees": extracted_data.get("taxes_fees"),
                 "payment_method": extracted_data.get("payment_method"),
@@ -199,16 +199,68 @@ class TransactionCreator:
             logger.warning(f"Category matching failed: {str(e)}")
             return None
     
-    def _determine_status(self, confidence_score: float) -> str:
+    def _check_missing_required_fields(self, extracted_data: Dict[str, Any]) -> List[str]:
         """
-        Determine transaction status based on confidence score.
+        Check for missing required fields that would prevent auto-approval.
+        
+        Args:
+            extracted_data: AI-extracted data
+            
+        Returns:
+            List of missing field names
+        """
+        missing_fields = []
+        
+        # Check category_id
+        if not extracted_data.get("category_id"):
+            missing_fields.append("category")
+        
+        # Check account_id (this would need to be provided by the calling code)
+        # For now, we'll assume it's provided, but this could be enhanced later
+        
+        # Check payment_method
+        if not extracted_data.get("payment_method"):
+            missing_fields.append("payment_method")
+        
+        # Check vendor (unless it's a transfer/deposit)
+        description = extracted_data.get("description", "").lower()
+        is_transfer_or_deposit = (
+            "transfer" in description or 
+            "deposit" in description
+        )
+        
+        if not extracted_data.get("vendor") and not is_transfer_or_deposit:
+            missing_fields.append("vendor")
+        
+        # Check amount
+        amount = extracted_data.get("amount")
+        if not amount or float(amount) <= 0:
+            missing_fields.append("amount")
+        
+        return missing_fields
+    
+    def _determine_status(self, confidence_score: float, extracted_data: Dict[str, Any]) -> str:
+        """
+        Determine transaction status based on confidence score and missing fields.
         
         Args:
             confidence_score: Overall confidence score
+            extracted_data: AI-extracted data
             
         Returns:
             Transaction status string
         """
+        # First check for missing required fields - if any are missing, 
+        # transaction cannot be auto-approved regardless of confidence
+        missing_fields = self._check_missing_required_fields(extracted_data)
+        if missing_fields:
+            logger.info(
+                f"Transaction has missing required fields {missing_fields}. "
+                f"Setting status to 'pending' for manual review."
+            )
+            return "pending"  # Requires manual review to complete missing fields
+        
+        # If all required fields are present, use confidence-based logic
         if confidence_score >= 0.95:
             return "approved"  # Very high confidence - auto-approve
         elif confidence_score >= 0.85:
@@ -232,10 +284,18 @@ class TransactionCreator:
             Notes string
         """
         notes_parts = [
-            "🤖 Auto-created from document extraction",
+            "Auto-created from document extraction",
             f"Confidence: {confidence_score:.1%}",
-            "🎯 Category selected by AI"
+            "Category selected by AI"
         ]
+        
+        # Check for missing required fields
+        missing_fields = self._check_missing_required_fields(extracted_data)
+        if missing_fields:
+            notes_parts.append(
+                f"⚠️ MISSING REQUIRED FIELDS: {', '.join(missing_fields).upper()}. "
+                "Transaction set to 'pending' for manual review."
+            )
         
         # Add field confidence info
         field_confidence = extracted_data.get("field_confidence", {})
@@ -246,13 +306,13 @@ class TransactionCreator:
             ]
             if low_confidence_fields:
                 notes_parts.append(
-                    f"⚠️ Low confidence fields: {', '.join(low_confidence_fields)}"
+                    f"Low confidence fields: {', '.join(low_confidence_fields)}"
                 )
         
         # Add line items if present
         line_items = extracted_data.get("line_items", [])
         if line_items and len(line_items) > 0:
-            notes_parts.append(f"📋 Contains {len(line_items)} line items")
+            notes_parts.append(f"Contains {len(line_items)} line items")
         
         return "\n".join(notes_parts)
     

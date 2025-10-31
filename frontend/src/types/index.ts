@@ -225,6 +225,10 @@ export interface ExpenseApprovalEditRequest extends ExpenseApprovalRequest {
   is_income?: boolean;
   receipt_url?: string;
   notes?: string;
+  vendor?: string;
+  taxes_fees?: number;
+  payment_method?: string;
+  recipient_id?: string;
 }
 
 // Rule Types

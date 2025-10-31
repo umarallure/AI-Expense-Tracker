@@ -55,9 +55,11 @@ const Expenses: React.FC = () => {
 
   useEffect(() => {
     if (selectedBusinessId) {
-      fetchCategoriesAndAccounts(selectedBusinessId);
-      setCurrentPage(1); // Reset to first page when business changes
-      fetchExpenses(selectedBusinessId, 1);
+      // Fetch categories and accounts first, then expenses
+      fetchCategoriesAndAccounts(selectedBusinessId).then(() => {
+        setCurrentPage(1); // Reset to first page when business changes
+        fetchExpenses(selectedBusinessId, 1);
+      });
     }
   }, [selectedBusinessId]);
 
@@ -79,12 +81,12 @@ const Expenses: React.FC = () => {
 
   const fetchCategoriesAndAccounts = async (businessId: string) => {
     try {
+      console.log('Fetching categories for business ID:', businessId);
       const [categoriesResponse, accountsResponse] = await Promise.all([
         categoryService.getCategories(businessId),
         accountService.getAccounts(businessId)
       ]);
-      console.log('Fetched categories:', categoriesResponse.categories);
-      console.log('Categories count:', categoriesResponse.categories?.length || 0);
+      console.log('Fetched categories count:', categoriesResponse.categories?.length || 0);
       setCategories(categoriesResponse.categories);
       setAccounts(accountsResponse.accounts);
     } catch (error) {
@@ -203,6 +205,11 @@ const Expenses: React.FC = () => {
           status: formData.status as ExpenseStatus,
           created_at: editingExpense?.created_at || '',
           updated_at: editingExpense?.updated_at || '',
+          description: formData.description,
+          vendor: formData.vendor || undefined,
+          taxes_fees: formData.taxes_fees ? parseFloat(formData.taxes_fees) : undefined,
+          payment_method: formData.payment_method || undefined,
+          recipient_id: formData.recipient_id || undefined,
         };
         
         const missingFieldsCheck = getMissingFields(testExpense);
@@ -740,8 +747,10 @@ const Expenses: React.FC = () => {
                   <div className="text-base text-gray-900 font-medium">{expense.description}</div>
                   <div className="text-base text-gray-900">
                     {(() => {
+                      if (!categories || categories.length === 0) {
+                        return 'Loading...';
+                      }
                       const foundCategory = categories.find(cat => cat.id === expense.category_id);
-                      console.log('Transaction category_id:', expense.category_id, 'Found category:', foundCategory);
                       return foundCategory?.category_name || 'Unknown';
                     })()}
                   </div>

@@ -69,7 +69,7 @@ export const accountService = {
 
 export const categoryService = {
   async getCategories(businessId: string): Promise<{ categories: Category[]; total: number }> {
-    const response = await api.get(`/categories/?business_id=${businessId}`);
+    const response = await api.get(`/categories/?business_id=${businessId}&include_inactive=true&include_system=true`);
     return response.data;
   },
 
