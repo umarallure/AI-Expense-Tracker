@@ -3,7 +3,7 @@ Excel/CSV Extractor Service
 Extracts structured data from Excel and CSV files using pandas.
 """
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 import pandas as pd
 import numpy as np
 from .base_extractor import BaseExtractor, ExtractionResult
@@ -51,11 +51,19 @@ class ExcelExtractor(BaseExtractor):
             # Convert to text representation
             raw_text = self._dataframe_to_text(df)
             
-            # Build structured data
-            structured_data = self._dataframe_to_structured(df, file_path)
+            # Check if this looks like a multi-transaction document
+            is_multi_transaction = self._is_multi_transaction_document(df)
+            
+            if is_multi_transaction:
+                # Extract multiple transactions
+                structured_data = self._extract_multiple_transactions(df, file_path)
+            else:
+                # Single transaction document (legacy behavior)
+                structured_data = self._dataframe_to_structured(df, file_path)
             
             # Extract metadata
             metadata = self._extract_metadata(df, file_path)
+            metadata["is_multi_transaction"] = is_multi_transaction
             
             return ExtractionResult(
                 success=True,
@@ -240,26 +248,265 @@ class ExcelExtractor(BaseExtractor):
         
         return detected
     
-    def _extract_metadata(self, df: pd.DataFrame, file_path: Path) -> Dict:
+    def _is_multi_transaction_document(self, df: pd.DataFrame) -> bool:
         """
-        Extract file metadata
+        Determine if this document contains multiple transactions
+        
+        Args:
+            df: pandas DataFrame
+            
+        Returns:
+            True if document appears to contain multiple transactions
+        """
+        if len(df) < 2:
+            return False
+        
+        # Check for transaction indicators
+        columns_lower = [col.lower() for col in df.columns]
+        
+        # Look for multiple rows with transaction-like data
+        transaction_indicators = [
+            'date', 'amount', 'transaction', 'vendor', 'merchant', 
+            'description', 'debit', 'credit', 'balance'
+        ]
+        
+        # Count how many transaction columns we have
+        transaction_column_count = sum(
+            1 for indicator in transaction_indicators 
+            for col in columns_lower 
+            if indicator in col
+        )
+        
+        # If we have multiple transaction columns and multiple rows, likely multi-transaction
+        if transaction_column_count >= 2 and len(df) >= 3:
+            return True
+        
+        # Check for patterns that indicate bank statements or transaction lists
+        # Look for sequential dates or amounts
+        date_col = self._find_column_by_patterns(df, ['date', 'transaction_date'])
+        amount_col = self._find_column_by_patterns(df, ['amount', 'debit', 'credit'])
+        
+        if date_col and amount_col:
+            # Check if we have multiple valid dates and amounts
+            valid_dates = df[date_col].notna().sum()
+            valid_amounts = df[amount_col].notna().sum()
+            
+            # If more than 60% of rows have both date and amount, likely multi-transaction
+            if valid_dates >= 3 and valid_amounts >= 3:
+                valid_rows = ((df[date_col].notna()) & (df[amount_col].notna())).sum()
+                if valid_rows / len(df) > 0.6:
+                    return True
+        
+        return False
+    
+    def _extract_multiple_transactions(self, df: pd.DataFrame, file_path: Path) -> Dict:
+        """
+        Extract multiple transactions from DataFrame
         
         Args:
             df: pandas DataFrame
             file_path: Path to file
             
         Returns:
-            Metadata dictionary
+            Structured data with multiple transactions
         """
-        metadata = {
-            "file_name": file_path.name,
-            "file_size": file_path.stat().st_size,
+        # Detect transaction columns
+        transaction_columns = self._detect_transaction_columns(df.columns.tolist())
+        
+        # Clean and prepare data
+        df_clean = self._prepare_transaction_dataframe(df, transaction_columns)
+        
+        # Extract individual transactions
+        transactions = []
+        for idx, row in df_clean.iterrows():
+            transaction = self._extract_single_transaction_from_row(row, transaction_columns)
+            if transaction:
+                transactions.append(transaction)
+        
+        # Build structured data
+        structured_data = {
+            "document_type": "multi_transaction_excel",
             "file_type": file_path.suffix.lower(),
-            "row_count": len(df),
-            "column_count": len(df.columns),
-            "memory_usage": df.memory_usage(deep=True).sum(),
-            "has_null_values": df.isnull().any().any(),
-            "null_count": int(df.isnull().sum().sum())
+            "total_rows": len(df),
+            "transaction_rows": len(transactions),
+            "detected_transaction_columns": transaction_columns,
+            "transactions": transactions,
+            "extraction_method": "multi_transaction",
+            "is_likely_expense_sheet": True
         }
         
-        return metadata
+        return structured_data
+    
+    def _prepare_transaction_dataframe(self, df: pd.DataFrame, transaction_columns: Dict[str, str]) -> pd.DataFrame:
+        """
+        Prepare DataFrame for transaction extraction
+        
+        Args:
+            df: Raw DataFrame
+            transaction_columns: Mapping of field types to column names
+            
+        Returns:
+            Cleaned DataFrame ready for transaction extraction
+        """
+        df_copy = df.copy()
+        
+        # Remove completely empty rows
+        df_copy = df_copy.dropna(how='all')
+        
+        # Remove header-like rows (if they exist in data)
+        if len(df_copy) > 1:
+            # Check if first row looks like headers
+            first_row = df_copy.iloc[0].astype(str).str.lower()
+            potential_headers = ['date', 'amount', 'description', 'vendor', 'transaction']
+            
+            header_score = sum(1 for header in potential_headers if 
+                             any(header in str(cell) for cell in first_row))
+            
+            # If first row looks like headers and we have a lot of rows, remove it
+            if header_score >= 2 and len(df_copy) > 5:
+                df_copy = df_copy.iloc[1:].reset_index(drop=True)
+        
+        # Clean amount columns
+        if 'amount' in transaction_columns:
+            amount_col = transaction_columns['amount']
+            df_copy[amount_col] = df_copy[amount_col].apply(self._clean_amount_value)
+        
+        # Clean date columns
+        if 'date' in transaction_columns:
+            date_col = transaction_columns['date']
+            df_copy[date_col] = df_copy[date_col].apply(self._clean_date_value)
+        
+        return df_copy
+    
+    def _extract_single_transaction_from_row(self, row: pd.Series, transaction_columns: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """
+        Extract a single transaction from a DataFrame row
+        
+        Args:
+            row: pandas Series representing one row
+            transaction_columns: Mapping of field types to column names
+            
+        Returns:
+            Transaction dictionary or None if invalid
+        """
+        transaction = {}
+        
+        # Extract basic fields
+        if 'date' in transaction_columns:
+            date_val = row.get(transaction_columns['date'])
+            if pd.notna(date_val):
+                transaction['date'] = self._format_date_for_transaction(date_val)
+        
+        if 'amount' in transaction_columns:
+            amount_val = row.get(transaction_columns['amount'])
+            if pd.notna(amount_val):
+                transaction['amount'] = self._format_amount_for_transaction(amount_val)
+        
+        if 'vendor' in transaction_columns:
+            vendor_val = row.get(transaction_columns['vendor'])
+            if pd.notna(vendor_val):
+                transaction['vendor'] = str(vendor_val).strip()
+        
+        if 'description' in transaction_columns:
+            desc_val = row.get(transaction_columns['description'])
+            if pd.notna(desc_val):
+                transaction['description'] = str(desc_val).strip()
+        
+        if 'category' in transaction_columns:
+            cat_val = row.get(transaction_columns['category'])
+            if pd.notna(cat_val):
+                transaction['category'] = str(cat_val).strip()
+        
+        # Determine if it's income or expense
+        if 'amount' in transaction and transaction['amount'] is not None:
+            amount = transaction['amount']
+            # Negative amounts are typically expenses, positive are income
+            transaction['is_income'] = amount > 0
+        
+        # Only return transaction if it has minimum required fields
+        required_fields = ['date', 'amount']
+        has_required = all(field in transaction and transaction[field] is not None 
+                          for field in required_fields)
+        
+        if has_required:
+            # Add row metadata
+            transaction['_row_index'] = row.name
+            transaction['_extraction_method'] = 'excel_row'
+            return transaction
+        
+        return None
+    
+    def _clean_amount_value(self, value: Any) -> Optional[float]:
+        """Clean amount value for processing"""
+        if pd.isna(value):
+            return None
+        
+        try:
+            # Convert to string and clean
+            str_val = str(value).strip()
+            
+            # Remove currency symbols and commas
+            str_val = str_val.replace('$', '').replace(',', '').replace('(', '-').replace(')', '')
+            
+            # Handle negative indicators
+            if str_val.startswith('-'):
+                str_val = str_val[1:]
+                multiplier = -1
+            else:
+                multiplier = 1
+            
+            return float(str_val) * multiplier
+            
+        except (ValueError, TypeError):
+            return None
+    
+    def _clean_date_value(self, value: Any) -> Optional[str]:
+        """Clean date value for processing"""
+        if pd.isna(value):
+            return None
+        
+        try:
+            # Try pandas date conversion
+            if hasattr(value, 'date'):
+                return value.date().isoformat()
+            elif isinstance(value, str):
+                # Try to parse string date
+                parsed = pd.to_datetime(value, errors='coerce')
+                if pd.notna(parsed):
+                    return parsed.date().isoformat()
+        except:
+            pass
+        
+        return None
+    
+    def _format_date_for_transaction(self, date_val: Any) -> Optional[str]:
+        """Format date for transaction storage"""
+        if isinstance(date_val, str) and len(date_val) == 10:  # YYYY-MM-DD
+            return date_val
+        return None
+    
+    def _format_amount_for_transaction(self, amount_val: Any) -> Optional[float]:
+        """Format amount for transaction storage"""
+        if isinstance(amount_val, (int, float)):
+            return float(amount_val)
+        return None
+    
+    def _find_column_by_patterns(self, df: pd.DataFrame, patterns: List[str]) -> Optional[str]:
+        """
+        Find column by pattern matching
+        
+        Args:
+            df: DataFrame
+            patterns: List of patterns to match
+            
+        Returns:
+            Column name or None
+        """
+        columns_lower = {col: col.lower() for col in df.columns}
+        
+        for pattern in patterns:
+            for col, col_lower in columns_lower.items():
+                if pattern in col_lower:
+                    return col
+        
+        return None

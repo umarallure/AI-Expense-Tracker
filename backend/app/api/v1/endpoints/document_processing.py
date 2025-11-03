@@ -18,7 +18,9 @@ from app.db.supabase import get_supabase_client
 from supabase import Client
 
 from app.services.document_processor import DocumentProcessor
-from app.services.ai import DocumentClassifier, DataExtractor, ConfidenceScorer
+from app.services.document_classifier import DocumentClassifier
+from app.services.document_chunker import DocumentChunker
+from app.services.ai import DataExtractor, ConfidenceScorer
 from app.services.transaction_creator import TransactionCreator
 from app.core.config import get_settings
 
@@ -28,6 +30,10 @@ router = APIRouter(prefix="/document-processing", tags=["Document Processing"])
 settings = get_settings()
 document_processor = DocumentProcessor()
 document_classifier = DocumentClassifier()
+document_chunker = DocumentChunker(
+    max_chunk_size=4000,  # Reduced for better AI processing (was 8000)
+    max_transactions_per_chunk=30  # Reduced to prevent token limit issues (was 50)
+)
 data_extractor = DataExtractor()
 confidence_scorer = ConfidenceScorer()
 transaction_creator = TransactionCreator(confidence_threshold=0.85)
@@ -207,14 +213,46 @@ async def process_document_background(
         
         # STEP 2: Classify document type using AI
         logger.info(f"Classifying document {document_id} using AI...")
-        document_type, classification_confidence = document_classifier.classify(raw_text)
+        classification_result = document_classifier.classify_document(
+            file_path=file_path,
+            extracted_text=raw_text,
+            structured_data=extraction_result.get("structured_data")
+        )
+        document_type = classification_result["document_type"]
+        classification_confidence = classification_result["confidence"]
+        is_multi_transaction = classification_result.get("is_multi_transaction", False)
+        
         logger.info(
             f"Document {document_id} classified as '{document_type}' "
-            f"with confidence {classification_confidence:.2f}"
+            f"with confidence {classification_confidence:.2f}, "
+            f"multi-transaction: {is_multi_transaction}"
         )
         
-        # STEP 3: Extract structured data using AI
-        logger.info(f"Extracting structured data from document {document_id}...")
+        # STEP 3: Check if document needs chunking
+        logger.info(f"Checking if document {document_id} needs chunking...")
+        structured_data = extraction_result.get("structured_data", {})
+        
+        should_chunk = document_chunker.should_chunk_document(raw_text, structured_data)
+        
+        if should_chunk and is_multi_transaction:
+            logger.info(f"Document {document_id} will be processed in chunks")
+            chunks = document_chunker.chunk_document(raw_text, structured_data, strategy="auto")
+            logger.info(f"Document split into {len(chunks)} chunks")
+            
+            # Estimate processing time
+            est_time = document_chunker.estimate_processing_time(chunks)
+            logger.info(f"Estimated processing time: {est_time:.1f} seconds")
+        else:
+            # Process as single document
+            chunks = [{
+                "chunk_id": 1,
+                "chunk_type": "full_document",
+                "text": raw_text,
+                "structured_data": structured_data
+            }]
+        
+        # STEP 4: Extract structured data using AI (process each chunk)
+        logger.info(f"Extracting structured data from {len(chunks)} chunk(s)...")
         
         # Get business_id for category matching
         doc_response = supabase.table("documents").select("business_id").eq(
@@ -225,19 +263,64 @@ async def process_document_background(
         if not business_id:
             raise Exception("Could not determine business_id for document")
         
-        # Extract structured data with dynamic category matching
-        extracted_data = data_extractor.extract(
-            text=raw_text,
-            document_type=document_type,
-            business_id=business_id,
-            supabase_client=supabase
-        )
+        # Process all chunks and collect extracted data
+        all_extracted_data = []
+        total_transactions_extracted = 0
         
-        # STEP 4: Calculate overall confidence
+        for idx, chunk in enumerate(chunks, 1):
+            logger.info(f"Processing chunk {idx}/{len(chunks)}...")
+            
+            chunk_text = chunk.get("text", raw_text)
+            chunk_structured_data = chunk.get("structured_data", structured_data)
+            
+            # If document is multi-transaction, force multi-transaction extraction for each chunk
+            if is_multi_transaction:
+                if not chunk_structured_data:
+                    chunk_structured_data = {}
+                # Add hint that this should extract multiple transactions
+                chunk_structured_data["extraction_method"] = "multi_transaction"
+                chunk_structured_data["force_multi_transaction"] = True
+            
+            # Extract structured data for this chunk
+            chunk_extracted = data_extractor.extract(
+                text=chunk_text,
+                document_type=document_type,
+                business_id=business_id,
+                supabase_client=supabase,
+                structured_data=chunk_structured_data
+            )
+            
+            # Check if multi-transaction result
+            if chunk_extracted.get("extraction_type") == "multi_transaction":
+                transactions = chunk_extracted.get("transactions", [])
+                total_transactions_extracted += len(transactions)
+                all_extracted_data.extend(transactions)
+                logger.info(f"Chunk {idx} extracted {len(transactions)} transactions")
+            else:
+                # Single transaction
+                all_extracted_data.append(chunk_extracted)
+                total_transactions_extracted += 1
+                logger.info(f"Chunk {idx} extracted 1 transaction")
+        
+        # Combine results
+        if total_transactions_extracted > 1:
+            extracted_data = {
+                "extraction_type": "multi_transaction",
+                "total_processed_transactions": total_transactions_extracted,
+                "valid_transactions": len([t for t in all_extracted_data if t.get("vendor") and t.get("amount")]),
+                "transactions": all_extracted_data,
+                "document_type": document_type,
+                "extraction_method": "chunked_processing" if len(chunks) > 1 else "batch_processing"
+            }
+        else:
+            extracted_data = all_extracted_data[0] if all_extracted_data else {}
+        
+        # STEP 5: Calculate overall confidence
         field_confidence = extracted_data.get("field_confidence", {})
         overall_confidence = confidence_scorer.calculate_overall_confidence(
             field_confidence=field_confidence,
-            extracted_fields=extracted_data
+            extracted_fields=extracted_data,
+            structured_data=extraction_result  # Pass structured data for completeness scoring
         )
         
         # Get recommendation
@@ -249,9 +332,9 @@ async def process_document_background(
             f"Recommendation: {recommendation['action']}"
         )
         
-        # STEP 5: Auto-create transaction if confidence is high enough
-        transaction_id = None
-        transaction_created = False
+        # STEP 6: Auto-create transaction(s) based on extraction results
+        transaction_ids = []
+        transactions_created = 0
         
         # Get document details for transaction creation
         doc_response = supabase.table("documents").select("business_id").eq(
@@ -271,63 +354,89 @@ async def process_document_background(
             if account_response.data and len(account_response.data) > 0:
                 account_id = account_response.data[0]["id"]
             
-            # Check if we should auto-create transaction
-            should_create = await transaction_creator.should_create_transaction(
-                confidence_score=overall_confidence,
-                extracted_data=extracted_data
-            )
-            
-            if should_create and account_id:
-                logger.info(f"Auto-creating transaction for document {document_id}...")
-                
-                created_transaction = await transaction_creator.create_from_document(
-                    document_id=document_id,
-                    business_id=business_id_str,
-                    account_id=account_id,
-                    user_id=user_id,
-                    extracted_data=extracted_data,
-                    confidence_score=overall_confidence,
-                    supabase_client=supabase
-                )
-                
-                if created_transaction:
-                    transaction_id = created_transaction.get("id")
-                    transaction_created = True
-                    logger.info(
-                        f"✅ Transaction {transaction_id} created for document {document_id}"
+            if account_id:
+                # Check if multi-transaction document
+                if extracted_data.get("extraction_type") == "multi_transaction":
+                    logger.info(f"Creating multiple transactions for document {document_id}...")
+                    
+                    created_result = await transaction_creator.create_from_document(
+                        document_id=document_id,
+                        business_id=business_id_str,
+                        account_id=account_id,
+                        user_id=user_id,
+                        extracted_data=extracted_data,
+                        confidence_score=overall_confidence,
+                        supabase_client=supabase
                     )
-            else:
-                if not account_id:
-                    logger.warning(f"No active account found for business {business_id_str}, cannot create transaction")
+                    
+                    if created_result:
+                        transaction_ids = created_result.get("transaction_ids", [])
+                        transactions_created = created_result.get("transactions_created", 0)
+                        logger.info(
+                            f"✅ Created {transactions_created} transactions for document {document_id}"
+                        )
                 else:
-                    logger.info(
-                        f"Confidence {overall_confidence:.2f} below threshold or missing required fields. "
-                        f"Transaction not auto-created."
+                    # Single transaction
+                    should_create = await transaction_creator.should_create_transaction(
+                        confidence_score=overall_confidence,
+                        extracted_data=extracted_data
                     )
+                    
+                    if should_create:
+                        logger.info(f"Creating single transaction for document {document_id}...")
+                        
+                        created_transaction = await transaction_creator.create_from_document(
+                            document_id=document_id,
+                            business_id=business_id_str,
+                            account_id=account_id,
+                            user_id=user_id,
+                            extracted_data=extracted_data,
+                            confidence_score=overall_confidence,
+                            supabase_client=supabase
+                        )
+                        
+                        if created_transaction:
+                            transaction_id = created_transaction.get("id")
+                            if transaction_id:
+                                transaction_ids.append(transaction_id)
+                                transactions_created = 1
+                            logger.info(
+                                f"✅ Transaction {transaction_id} created for document {document_id}"
+                            )
+                    else:
+                        logger.info(
+                            f"Confidence {overall_confidence:.2f} below threshold. "
+                            f"Transaction not auto-created."
+                        )
+            else:
+                logger.warning(f"No active account found for business {business_id_str}, cannot create transactions")
         
-        # STEP 6: Update document with all results
+        # STEP 7: Update document with final results
         update_data = {
             "extraction_status": "completed",
             "document_type": document_type,
             "raw_text": raw_text,
             "structured_data": extracted_data,
             "confidence_score": overall_confidence,
+            "auto_created_transaction": transactions_created > 0,
             "processed_at": datetime.utcnow().isoformat()
         }
         
-        # Add transaction link if created
-        if transaction_id:
-            update_data["transaction_id"] = transaction_id
-            update_data["auto_created_transaction"] = transaction_created
+        # Add transaction reference(s)
+        if len(transaction_ids) == 1:
+            update_data["transaction_id"] = transaction_ids[0]
+        elif len(transaction_ids) > 1:
+            # Store multiple transaction IDs in structured_data
+            update_data["structured_data"]["transaction_ids"] = transaction_ids
+            update_data["structured_data"]["transactions_created"] = transactions_created
         
         supabase.table("documents").update(update_data).eq("id", document_id).execute()
         
         logger.info(
             f"✅ Successfully processed document {document_id}. "
             f"Type: {document_type}, Confidence: {overall_confidence:.2f}, "
-            f"Vendor: {extracted_data.get('vendor')}, "
-            f"Amount: {extracted_data.get('amount')}, "
-            f"Transaction created: {transaction_created}"
+            f"Transactions created: {transactions_created}, "
+            f"Multi-transaction: {extracted_data.get('extraction_type') == 'multi_transaction'}"
         )
         
     except Exception as e:

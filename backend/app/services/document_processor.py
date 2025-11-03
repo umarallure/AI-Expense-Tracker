@@ -15,6 +15,7 @@ from .extractors import (
     ImageExtractor,
     ExcelExtractor
 )
+from .document_classifier import DocumentClassifier, DocumentType
 
 
 class DocumentProcessor:
@@ -39,6 +40,9 @@ class DocumentProcessor:
         
         # Create extractor registry for quick lookup
         self.extractor_registry = self._build_extractor_registry()
+        
+        # Initialize document classifier
+        self.classifier = DocumentClassifier()
     
     def _build_extractor_registry(self) -> Dict[str, BaseExtractor]:
         """
@@ -126,6 +130,13 @@ class DocumentProcessor:
             # Extract content
             extraction_result = extractor.extract_safe(file_path)
             
+            # Classify document type
+            classification = self.classifier.classify_document(
+                file_path=file_path,
+                extracted_text=extraction_result.raw_text,
+                structured_data=extraction_result.structured_data
+            )
+            
             # Calculate processing time
             end_time = datetime.utcnow()
             processing_time = (end_time - start_time).total_seconds() * 1000
@@ -140,7 +151,8 @@ class DocumentProcessor:
                     "structured_data": extraction_result.structured_data,
                     "metadata": extraction_result.metadata,
                     "text_length": len(extraction_result.raw_text),
-                    "word_count": len(extraction_result.raw_text.split())
+                    "word_count": len(extraction_result.raw_text.split()),
+                    "document_classification": classification
                 }
             else:
                 result["status"] = "failed"

@@ -2,7 +2,7 @@
 Confidence Scorer Service
 Calculates overall extraction confidence from field-level scores.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from loguru import logger
 
 
@@ -38,7 +38,8 @@ class ConfidenceScorer:
     def calculate_overall_confidence(
         self,
         field_confidence: Dict[str, float],
-        extracted_fields: Dict[str, Any]
+        extracted_fields: Dict[str, Any],
+        structured_data: Optional[Dict] = None
     ) -> float:
         """
         Calculate overall extraction confidence from field-level scores.
@@ -46,19 +47,17 @@ class ConfidenceScorer:
         Args:
             field_confidence: Dictionary of field_name -> confidence_score
             extracted_fields: Dictionary of extracted field values
+            structured_data: Additional structured data from extractor
             
         Returns:
             Overall confidence score (0.0 to 1.0)
-            
-        Example:
-            >>> scorer = ConfidenceScorer()
-            >>> field_conf = {"vendor": 0.95, "amount": 0.99, "date": 0.90}
-            >>> fields = {"vendor": "Acme Corp", "amount": 150.00, "date": "2023-01-15"}
-            >>> overall = scorer.calculate_overall_confidence(field_conf, fields)
-            >>> print(f"Overall confidence: {overall:.2f}")
-            Overall confidence: 0.94
         """
         try:
+            # Check if this is multi-transaction data
+            if self._is_multi_transaction_result(extracted_fields):
+                return self._calculate_multi_transaction_confidence(extracted_fields, structured_data or {})
+            
+            # Single transaction logic (existing)
             if not field_confidence:
                 return 0.0
             
@@ -91,7 +90,7 @@ class ConfidenceScorer:
             overall_confidence = max(0.0, min(1.0, overall_confidence))
             
             logger.debug(
-                f"Calculated overall confidence: {overall_confidence:.3f} "
+                f"Calculated single transaction confidence: {overall_confidence:.3f} "
                 f"(weighted_sum: {weighted_sum:.3f}, total_weight: {total_weight:.3f})"
             )
             
@@ -136,6 +135,129 @@ class ConfidenceScorer:
             )
         
         return max(0.0, adjusted_confidence)
+    
+    def _is_multi_transaction_result(self, extracted_fields: Dict[str, Any]) -> bool:
+        """
+        Check if the extraction result contains multiple transactions
+        
+        Args:
+            extracted_fields: Extracted field data
+            
+        Returns:
+            True if multi-transaction result
+        """
+        # Check for multi-transaction indicators
+        if extracted_fields.get("extraction_type") == "multi_transaction":
+            return True
+        
+        if "transactions" in extracted_fields and isinstance(extracted_fields["transactions"], list):
+            return len(extracted_fields["transactions"]) > 1
+        
+        return False
+    
+    def _calculate_multi_transaction_confidence(
+        self,
+        extracted_fields: Dict[str, Any],
+        structured_data: Dict
+    ) -> float:
+        """
+        Calculate confidence for multi-transaction extraction
+        
+        Args:
+            extracted_fields: Multi-transaction extraction result
+            structured_data: Original structured data from extractor
+            
+        Returns:
+            Overall confidence score (0.0 to 1.0)
+        """
+        try:
+            transactions = extracted_fields.get("transactions", [])
+            if not transactions:
+                return 0.0
+            
+            # Calculate individual transaction confidences
+            transaction_confidences = []
+            valid_transaction_count = 0
+            
+            for tx in transactions:
+                tx_confidence = self._calculate_single_transaction_confidence(tx)
+                if tx_confidence > 0:  # Only count transactions with some confidence
+                    transaction_confidences.append(tx_confidence)
+                    valid_transaction_count += 1
+            
+            if not transaction_confidences:
+                return 0.0
+            
+            # Calculate average transaction confidence
+            avg_transaction_confidence = sum(transaction_confidences) / len(transaction_confidences)
+            
+            # Calculate completeness score
+            expected_count = extracted_fields.get("total_raw_transactions", len(transactions))
+            actual_count = extracted_fields.get("valid_transactions", valid_transaction_count)
+            completeness_score = actual_count / expected_count if expected_count > 0 else 0
+            
+            # Apply completeness penalty
+            completeness_penalty = (1 - completeness_score) * 0.3  # Max 30% penalty for missing transactions
+            
+            # Final confidence combines transaction quality and completeness
+            overall_confidence = avg_transaction_confidence - completeness_penalty
+            
+            # Ensure bounds
+            overall_confidence = max(0.0, min(1.0, overall_confidence))
+            
+            logger.debug(
+                f"Multi-transaction confidence: {overall_confidence:.3f} "
+                f"(avg_tx: {avg_transaction_confidence:.3f}, completeness: {completeness_score:.3f}, "
+                f"penalty: {completeness_penalty:.3f})"
+            )
+            
+            return overall_confidence
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate multi-transaction confidence: {str(e)}")
+            return 0.0
+    
+    def _calculate_single_transaction_confidence(self, transaction: Dict[str, Any]) -> float:
+        """
+        Calculate confidence for a single transaction within multi-transaction result
+        
+        Args:
+            transaction: Single transaction data
+            
+        Returns:
+            Confidence score for this transaction
+        """
+        try:
+            field_confidence = transaction.get("field_confidence", {})
+            
+            if not field_confidence:
+                # Estimate confidence based on available fields
+                confidence = 0.0
+                if transaction.get("vendor"):
+                    confidence += 0.3
+                if transaction.get("amount"):
+                    confidence += 0.4
+                if transaction.get("date"):
+                    confidence += 0.3
+                return min(confidence, 1.0)
+            
+            # Calculate weighted confidence from field scores
+            total_weight = 0.0
+            weighted_sum = 0.0
+            
+            for field, confidence in field_confidence.items():
+                weight = self.FIELD_WEIGHTS.get(field, 0.05)
+                weighted_sum += confidence * weight
+                total_weight += weight
+            
+            if total_weight > 0:
+                return weighted_sum / total_weight
+            else:
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"Failed to calculate single transaction confidence: {str(e)}")
+            return 0.0
     
     def should_auto_approve(self, overall_confidence: float) -> bool:
         """
